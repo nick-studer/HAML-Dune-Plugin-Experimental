@@ -1,0 +1,594 @@
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Input;
+using System.Windows.Media;
+using ArcGIS.Core.Data;
+using ArcGIS.Desktop.Catalog;
+using ArcGIS.Desktop.Core;
+using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Mapping;
+
+namespace HamlProAppModule.haml.ui.options
+{
+    /// <summary>
+    /// Interaction logic for PixelDepth.xaml
+    /// </summary>
+    public partial class OptionsWindow : INotifyPropertyChanged
+    {
+        private string _gdbPath;
+        public string GDBPath
+        {
+            get { return _gdbPath; }
+            set
+            {
+                _gdbPath = value;
+                OnPropertyChanged(nameof(GDBPath));
+            }
+        }
+
+        private int _selectedBitDepth;
+        public int SelectedBitDepth
+        {
+            get { return _selectedBitDepth; }
+            set
+            {
+                _selectedBitDepth = value;
+                OnPropertyChanged(nameof(SelectedBitDepth));
+            }
+        }
+
+        private bool _validBitDepth = true;
+        public bool ValidBitDepth
+        {
+            get { return _validBitDepth; }
+            set
+            {
+                _validBitDepth = value;
+                OnPropertyChanged(nameof(ValidBitDepth));
+            }
+        }
+
+        private double _selectedMeanHighWaterPoint;
+
+        public double SelectedMeanHighWaterPoint
+        {
+            get { return _selectedMeanHighWaterPoint; }
+            set
+            {
+                _selectedMeanHighWaterPoint = value;
+                OnPropertyChanged(nameof(SelectedMeanHighWaterPoint));
+            }
+        }
+
+        private bool _validMeanHighWaterPoint = true;
+        
+        public bool ValidMeanHighWaterPoint
+        {
+            get { return _validMeanHighWaterPoint; }
+            set
+            {
+                _validMeanHighWaterPoint = value;
+                OnPropertyChanged(nameof(ValidMeanHighWaterPoint));
+            }
+        }
+<<<<<<< working copy
+        
+        private double _selectedProfileSpacing;
+
+        public double SelectedProfileSpacing
+        {
+            get { return _selectedProfileSpacing; }
+            set
+            {
+                _selectedProfileSpacing = value;
+                OnPropertyChanged(nameof(SelectedProfileSpacing));
+            }
+        }
+
+        private bool _validProfileSpacing = true;
+
+        public bool ValidProfileSpacing
+        {
+            get { return _validProfileSpacing; }
+            set
+            {
+                _validProfileSpacing = value;
+                OnPropertyChanged(nameof(ValidProfileSpacing));
+=======
+>>>>>>> merge rev
+            }
+        }
+
+        private bool _validGDB = true;
+        public bool ValidGDB
+        {
+            get { return _validGDB; }
+            set
+            {
+                _validGDB = value;
+                OnPropertyChanged(nameof(ValidGDB));
+            }
+        }
+
+        private List<Layer> _layerList;
+        public List<Layer> LayerList
+        {
+            get { return _layerList; }
+            set
+            {
+                _layerList = value;
+                OnPropertyChanged(nameof(LayerList));
+            }
+        }
+
+        private Layer _selectedLayer;
+        public Layer SelectedLayer
+        {
+            get { return _selectedLayer; }
+            set
+            {
+                _selectedLayer = value;
+                OnPropertyChanged(nameof(SelectedLayer));
+            }
+        }
+        
+        private string[] _elements;
+        public string[] Elements
+        {
+            get => _elements;
+            set
+            {
+                _elements = value;
+                OnPropertyChanged(nameof(Elements));
+            }
+        }
+        
+        private string _selectedElement;
+        public string SelectedElement
+        {
+            get => _selectedElement;
+            set
+            {
+                _selectedElement = value;
+                OnPropertyChanged(nameof(SelectedElement));
+            }
+        }
+        
+        private Color _selectedColor;
+        public Color SelectedColor
+        {
+            get => _selectedColor;
+            set
+            {
+                _selectedColor = value;
+                OnPropertyChanged(nameof(SelectedColor));
+            }
+        }
+        
+        private Dictionary<ColorSettings.GuiElement, string> _colorChanges;
+        private Dictionary<string, ColorSettings.GuiElement> _formattedElements;
+
+        internal bool Cancel { get; private set; } = true;
+        internal Dictionary<Layer, RasterLayerSettings> RasterLayerSettings { get; private set; }
+
+        internal List<string> instructions = new List<string>();
+        private Dictionary<Layer, RasterLayerSettings> OriginalRasterLayerSettings { get; }
+
+        internal OptionsWindow(Dictionary<Layer, RasterLayerSettings> rasterLayerSettings)
+        {
+            InitializeComponent();
+            DataContext = this;
+            _colorChanges = new Dictionary<ColorSettings.GuiElement, string>();
+            _formattedElements = new Dictionary<string, ColorSettings.GuiElement>();
+            FormatGuiElements();
+            RasterLayerSettings = rasterLayerSettings;
+            OriginalRasterLayerSettings = new Dictionary<Layer, RasterLayerSettings>(RasterLayerSettings);
+            if (RasterLayerSettings.Count() == 0)
+            {
+                BitDepthSP.Visibility = Visibility.Collapsed;
+                InstructionsSP.Visibility = Visibility.Collapsed;
+            }
+            LayerList = RasterLayerSettings.Keys.ToList();
+            SelectedLayer = LayerList.FirstOrDefault();
+            DefaultValues();
+
+            GDBPathTB.Focus();
+            GDBPathTB.Select(GDBPathTB.Text.Length, 0);
+
+            Closing += PixelDepth_Closing;
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        private void PixelDepth_Closing(object sender, CancelEventArgs e)
+        {
+            if (Cancel)
+            {
+                DefaultValues();
+            }
+        }
+
+        private void Browse_Click(object sender, RoutedEventArgs e)
+        {
+            var browseDialog = new OpenItemDialog()
+            {
+                Title = "Browse for a Geodatabase",
+                InitialLocation = Project.Current.HomeFolderPath,
+                MultiSelect = false,
+                Filter = ItemFilters.geodatabases
+            };
+
+            var result = browseDialog.ShowDialog();
+            if (result.GetValueOrDefault())
+            {
+                var item = browseDialog.Items.FirstOrDefault();
+                if (item != null)
+                {
+                    GDBPath = item.Path;
+                }
+            }
+        }
+
+        private void OK_Click(object sender, RoutedEventArgs e)
+        {
+            Cancel = false;
+            Module1.UpdateColorSettings(_colorChanges);
+            Module1.UpdateMeanHighWaterPoint(_selectedMeanHighWaterPoint);
+            Module1.UpdateProfileSpacing(_selectedProfileSpacing);
+            Close();
+        }
+
+        private void Cancel_Click(object sender, RoutedEventArgs e)
+        {
+            Cancel = true;
+            Close();
+        }
+
+        private void Reset_Click(object sender, RoutedEventArgs args)
+        {
+            var element = _formattedElements[_selectedElement];
+            SelectedColor = (Color)ColorConverter.ConvertFromString(Module1.GetDefaultColor(element));
+            if (_colorChanges.ContainsKey(element))
+            {
+                _colorChanges[element] = _selectedColor.ToString();
+            }
+            else
+            {
+                _colorChanges.Add(element, _selectedColor.ToString());
+            }
+        }
+
+        private void DefaultValues()
+        {
+            SelectedMeanHighWaterPoint = Module1.MeanHighWaterPoint;
+            SelectedProfileSpacing = Module1.ProfileSpacing;
+            
+            RasterLayerSettings = OriginalRasterLayerSettings;
+            if (SelectedLayer != null)
+            {
+                SelectedBitDepth = RasterLayerSettings[SelectedLayer].UserDefinedBitDepth;
+            }
+
+            if (string.IsNullOrWhiteSpace(OptionsVM.gdbPath))
+            {
+                GDBPath = Module1.DefaultGDBPath;
+            }
+            else
+            {
+                GDBPath = OptionsVM.gdbPath;
+            }
+        }
+
+        private static readonly Regex _validInt = new Regex("^[0-9]+$");
+        private static readonly Regex _validSignedDouble = new Regex(@"^-?[0-9]*\.?[0-9]*$");
+        private static readonly Regex _validUnsignedDouble = new Regex(@"^[0-9]*\.?[0-9]*$");
+        private bool IsInputValidNumber(string text, Regex valueCheck)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+            return valueCheck.IsMatch(text);
+        }
+
+        string originalBitDepth = null;
+        private void BitDepth_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            var tb = (TextBox)sender;
+            originalBitDepth = tb.Text;
+        }
+
+        private void BitDepth_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            var tb = (TextBox)sender;
+            originalBitDepth = tb.Text;
+        }
+
+        private void BitDepth_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (BitDepthSP.Visibility == Visibility.Collapsed)
+            {
+                ValidBitDepth = true;
+                return;
+            }
+
+            var tb = (TextBox)sender;
+
+            int.TryParse(tb.Text, out int bitDepth);
+            var isTextAllowed = true;
+            if (e.Changes.FirstOrDefault().AddedLength > 0)
+            {
+                isTextAllowed = IsInputValidNumber(tb.Text, _validInt);
+            }
+            
+            if ((SelectedLayer != null && RasterLayerSettings.ContainsKey(SelectedLayer) && bitDepth > RasterLayerSettings[SelectedLayer].MaxBitDepth) || !isTextAllowed)
+            {
+                tb.Text = originalBitDepth;
+                ValidBitDepth = true;
+            }
+            else if (bitDepth == 0)
+            {
+                ValidBitDepth = false;
+            }
+            else
+            {
+                SelectedBitDepth = bitDepth;
+                RasterLayerSettings[SelectedLayer] = new RasterLayerSettings(SelectedLayer, RasterLayerSettings[SelectedLayer].MaxBitDepth, SelectedBitDepth);
+                ValidBitDepth = true;
+            }
+
+            tb.Select(tb.Text.Length, 0);
+            Validation.ClearInvalid(tb.GetBindingExpression(TextBox.TextProperty));
+        }
+        
+<<<<<<< working copy
+        string originalMeanHighWaterPoint = null;
+        private void MeanHighWaterPoint_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            var tb = (TextBox)sender;
+            originalMeanHighWaterPoint = tb.Text;
+        }
+
+        private void MeanHighWaterPoint_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            var tb = (TextBox)sender;
+            originalMeanHighWaterPoint = tb.Text;
+        }
+
+        private void MeanHighWaterPoint_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (MeanHighWaterPointSP.Visibility == Visibility.Collapsed)
+            {
+                ValidMeanHighWaterPoint = true;
+                return;
+            }
+
+            var tb = (TextBox)sender;
+
+            double.TryParse(tb.Text, out double meanHighWaterPoint);
+            var isTextAllowed = true;
+            if (e.Changes.FirstOrDefault().AddedLength > 0)
+            {
+                isTextAllowed = IsInputValidNumber(tb.Text, _validSignedDouble);
+            }
+            
+            if (!isTextAllowed)
+            {
+                tb.Text = originalMeanHighWaterPoint;
+                ValidMeanHighWaterPoint = true;
+            }
+            else if (tb.Text.EndsWith("."))
+            {
+                // do nothing if the user has merely added a decimal
+            }
+            else
+            {
+                SelectedMeanHighWaterPoint = meanHighWaterPoint;
+                ValidMeanHighWaterPoint = true;
+            }
+            
+            Validation.ClearInvalid(tb.GetBindingExpression(TextBox.TextProperty));
+        }
+        
+        string originalProfileSpacing = "10";
+
+        private void ProfileSpacing_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            var tb = (TextBox)sender;
+            originalProfileSpacing = tb.Text;
+        }
+
+        private void ProfileSpacing_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (ProfileSpacingSP.Visibility == Visibility.Collapsed)
+            {
+                ValidProfileSpacing = true;
+                return;
+            }
+
+            var tb = (TextBox)sender;
+
+            double.TryParse(tb.Text, out double profileSpacing);
+            var isTextAllowed = true;
+            if (e.Changes.FirstOrDefault().AddedLength > 0)
+            {
+                isTextAllowed = IsInputValidNumber(tb.Text, _validUnsignedDouble) && profileSpacing > 0.0;
+            }
+            
+            if (!isTextAllowed)
+            {
+                tb.Text = originalProfileSpacing;
+                ValidProfileSpacing = true;
+            }
+            else if (tb.Text.EndsWith("."))
+            {
+                // do nothing if the user has merely added a decimal
+            }
+            else
+            {
+                SelectedProfileSpacing = profileSpacing;
+                ValidProfileSpacing = true;
+            }
+            
+=======
+        string originalMeanHighWaterValue = null;
+        private void MeanHighWaterValue_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            var tb = (TextBox)sender;
+            originalMeanHighWaterValue = tb.Text;
+        }
+
+        private void MeanHighWaterValue_Pasting(object sender, DataObjectPastingEventArgs e)
+        {
+            var tb = (TextBox)sender;
+            originalMeanHighWaterValue = tb.Text;
+        }
+
+        private void MeanHighWaterValue_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (MeanHighWaterValueSP.Visibility == Visibility.Collapsed)
+            {
+                ValidMeanHighWaterValue = true;
+                return;
+            }
+
+            var tb = (TextBox)sender;
+
+            int.TryParse(tb.Text, out int meanHighWaterValue);
+            var isTextAllowed = true;
+            if (e.Changes.FirstOrDefault().AddedLength > 0)
+            {
+                isTextAllowed = IsInputValidNumber(tb.Text);
+            }
+            
+            if ((SelectedLayer != null && RasterLayerSettings.ContainsKey(SelectedLayer) && meanHighWaterValue > RasterLayerSettings[SelectedLayer].MaxMeanHighWaterValue) || !isTextAllowed)
+            {
+                tb.Text = originalMeanHighWaterValue;
+                ValidMeanHighWaterValue = true;
+            }
+            else if (meanHighWaterValue == 0)
+            {
+                ValidMeanHighWaterValue = false;
+            }
+            else
+            {
+                SelectedMeanHighWaterValue = meanHighWaterValue;
+                RasterLayerSettings[SelectedLayer] = new RasterLayerSettings(SelectedLayer, RasterLayerSettings[SelectedLayer].MaxMeanHighWaterValue, SelectedMeanHighWaterValue);
+                ValidMeanHighWaterValue = true;
+            }
+
+            tb.Select(tb.Text.Length, 0);
+>>>>>>> merge rev
+            Validation.ClearInvalid(tb.GetBindingExpression(TextBox.TextProperty));
+        }
+
+        private bool CheckGDBValid(string gdbPath)
+        {
+            if (string.IsNullOrWhiteSpace(gdbPath))
+            {
+                return false;
+            }
+
+            if (!Directory.Exists(gdbPath))
+            {
+                return false;
+            }
+
+            return QueuedTask.Run(() =>
+            {
+                try
+                {
+                    using (var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+                    {
+                        return true;
+                    }
+                }
+                catch
+                {
+                    return false;
+                }
+            }).Result;
+        }
+
+        private void GDBPath_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            var tb = (TextBox)sender;
+            var gdbPath = tb.Text;
+            ValidGDB = CheckGDBValid(gdbPath);
+        }
+
+        private void GDBPath_LostFocus(object sender, RoutedEventArgs e)
+        {
+            var tb = (TextBox)sender;
+            tb.Select(tb.Text.Length, 0);
+        }
+
+        private void LayerListCB_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            var selectedLayer = (Layer)e.AddedItems[0];
+            if (RasterLayerSettings.ContainsKey(selectedLayer))
+            {
+                SelectedBitDepth = RasterLayerSettings[selectedLayer].UserDefinedBitDepth;
+            }
+        }
+        
+        public void OnSelectionChanged(object sender, SelectionChangedEventArgs args)
+        {
+            SelectedColor = (Color)ColorConverter.ConvertFromString(
+                    Module1.GetElementHexColor(_formattedElements[_selectedElement])
+                );
+        }
+
+        private void OnSelectedColorChanged(object sender, RoutedPropertyChangedEventArgs<Color?> e)
+        {
+            var element = _formattedElements[_selectedElement];
+            if (_colorChanges.ContainsKey(element))
+            {
+                _colorChanges[element] = _selectedColor.ToString();
+            }
+            else
+            {
+                _colorChanges.Add(element, _selectedColor.ToString());
+            }
+        }
+
+        // Reformatting enum names by creating a space between each word
+        private void FormatGuiElements()
+        {
+            var r = new Regex(@"(?<!^)(?=[A-Z])");
+            foreach (ColorSettings.GuiElement element in Enum.GetValues(typeof(ColorSettings.GuiElement)))
+            {
+                var split = r.Split(element.ToString());
+                _formattedElements[string.Join(" ", split)] = element;
+            }
+
+            Elements = _formattedElements.Keys.ToArray();
+            SelectedElement = _elements[0];
+        }
+    }
+
+    public class BooleanAndConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            return values.All(value => value is bool && (bool)value);
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            return null;
+        }
+    }
+}

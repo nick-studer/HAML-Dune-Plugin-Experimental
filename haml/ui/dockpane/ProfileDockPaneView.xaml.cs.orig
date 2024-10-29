@@ -1,0 +1,42 @@
+﻿using System.Windows.Controls;
+using System.Windows.Input;
+using HamlProAppModule.haml.ui.arctool;
+
+namespace HamlProAppModule.haml.ui.dockpane;
+
+public partial class ProfileDockPaneView : UserControl
+{
+    public ProfileDockPaneView()
+    {
+        InitializeComponent();
+    }
+    
+<<<<<<< working copy
+            
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.M:
+                if (Module1.activeHamlMapTool is HamlSketchProfileMapTool)
+                {
+                    ((HamlSketchProfileMapTool) Module1.activeHamlMapTool).CycleProfile();
+                }
+                break;
+            case Key.N:
+                if (Module1.activeHamlMapTool is HamlSketchProfileMapTool)
+                {
+                    ((HamlSketchProfileMapTool) Module1.activeHamlMapTool).CycleProfile(false);
+                }
+                break;
+            case Key.K:
+                if (Module1.activeHamlMapTool is HamlFeatureClassMapTool)
+                {
+                    ((HamlFeatureClassMapTool) Module1.activeHamlMapTool).AutoGenerateVertices(3); //todo: remove or implement unused argument
+                }
+                break;
+        }
+    }
+=======
+>>>>>>> merge rev
+}

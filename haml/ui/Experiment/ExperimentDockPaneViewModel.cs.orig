@@ -1,0 +1,165 @@
+<<<<<<< working copy
+﻿using System;
+using System.Collections.Generic;
+=======
+﻿using System.Collections.Generic;
+>>>>>>> merge rev
+using System.Linq;
+using ArcGIS.Desktop.Framework;
+using ArcGIS.Desktop.Framework.Contracts;
+using ArcGIS.Desktop.Internal.Mapping.Locate;
+using HamlProAppModule.haml.util;
+using OxyPlot;
+using OxyPlot.Axes;
+using OxyPlot.Legends;
+using OxyPlot.Series;
+
+namespace HamlProAppModule.haml.ui.Experiment;
+
+public class ExperimentDockPaneViewModel : DockPane
+{
+    private static ExperimentDockPaneViewModel? _pane;
+    private const string DockPaneId = "ExperimentDockPane";
+    private Dictionary<ExperimentStat, object> _stats;
+    private PlotModel _history;
+    private List<ExperimentStat> _plotOptions;
+    private ExperimentStat _stat1;
+    private ExperimentStat _stat2;
+    private bool _initialized;
+
+    public Dictionary<ExperimentStat, object> Stats
+    {
+        get => _stats;
+        set => SetProperty(ref _stats, value, () => Stats);
+    }
+    
+    public PlotModel History
+    {
+        get => _history;
+        set => SetProperty(ref _history, value, () => History);
+    }
+    
+    public List<ExperimentStat> PlotOptions
+    {
+        get => _plotOptions;
+        set => SetProperty(ref _plotOptions, value, () => PlotOptions);
+    }
+    
+    public ExperimentStat Stat1
+    {
+        get => _stat1;
+        set
+        {
+            SetProperty(ref _stat1, value, () => Stat1);
+            OnStatSelected();
+        }
+    }
+
+    public ExperimentStat Stat2
+    {
+        get => _stat2;
+        set
+        {
+            SetProperty(ref _stat2, value, () => Stat2);
+            OnStatSelected();
+        }
+    }
+
+    public static ExperimentDockPaneViewModel? Pane => _pane ??= 
+        FrameworkApplication.DockPaneManager.Find(DockPaneId) as ExperimentDockPaneViewModel;
+    
+    internal static void Show()
+    {
+        if (Pane is null) return;
+<<<<<<< working copy
+        Pane.Stats = Module1.StatTracker.Latest.Stats;
+
+=======
+        Pane.Stats = Module1.StatTracker.Latest.Stats.ToDictionary(kvp=>kvp.Key, kvp=>kvp.Value);
+        
+>>>>>>> merge rev
+        GUI.RunOnUiThread(() =>
+        {
+            Pane.Activate();
+        });
+    }
+
+    public ExperimentDockPaneViewModel()
+    {
+        _initialized = false;
+    }
+
+    private void Init()
+    {
+        PlotOptions = Enum.GetValues<ExperimentStat>()
+            .Where(e => e.DefaultValue() is not bool).ToList();
+        if (Stat1 != ExperimentStat.PlacementIsMl && Stat2 != ExperimentStat.PlacementIsMl) return;
+        Stat1 = ExperimentStat.HighPtCorrectionDistance;
+        Stat2 = ExperimentStat.LowPtCorrectionDistance;
+
+        _initialized = true;
+    }
+
+    private void BuildHistoryPlot(ExperimentStat stat1, ExperimentStat stat2)
+    {
+        if (!_initialized) Init();
+        
+        if (stat1.DefaultValue() is bool || stat2.DefaultValue() is bool) return;
+        History = new PlotModel();
+        var data1 = Module1.StatTracker.GetHistory<double>(stat1);
+        var data2 = Module1.StatTracker.GetHistory<double>(stat2);
+        
+        History.Legends.Add(new Legend
+        {
+            LegendTitle = "Legend",
+            LegendPosition = LegendPosition.BottomRight
+        });
+        
+        History.Axes.Add(new LinearAxis
+        {
+            Title = "IDK",
+            Position = AxisPosition.Bottom,
+            Minimum = 0,
+            Maximum = data1.Count
+        });
+        
+        History.Axes.Add(new LinearAxis
+        {
+            Title = Enum.GetName(stat1),
+            Position = AxisPosition.Left,
+            Key = "Left",
+            Minimum = data1.Min(),
+            Maximum = data1.Max()
+        });
+        
+        History.Axes.Add(new LinearAxis
+        {
+            Title = Enum.GetName(stat2),
+            Position = AxisPosition.Right,
+            Key = "Right",
+            Minimum = data2.Min(),
+            Maximum = data2.Max()
+        });
+        
+        History.Series.Add(BuildSeries(data1, "Left"));
+        History.Series.Add(BuildSeries(data2, "Right"));
+        
+        History.InvalidatePlot(false);
+    }
+    
+    private LineSeries BuildSeries(List<double> data, string yAxisKey)
+    {
+        var series = new LineSeries();
+        data.ForEachWithIndex((d, i) => series.Points.Add(new DataPoint(i, d)));
+        series.YAxisKey = yAxisKey;
+        series.Color = yAxisKey.Equals("Left") ? OxyColors.Red : OxyColors.Aqua;
+        series.Title = yAxisKey.Equals("Left") ? Enum.GetName(Stat1) : Enum.GetName(Stat2);
+        return series;
+    }
+    
+    private void OnStatSelected()
+    {
+        BuildHistoryPlot(Stat1, Stat2);
+    }
+
+}

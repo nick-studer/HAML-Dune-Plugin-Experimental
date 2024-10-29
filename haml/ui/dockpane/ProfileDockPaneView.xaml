@@ -1,0 +1,48 @@
+﻿<UserControl x:Class="HamlProAppModule.haml.ui.dockpane.ProfileDockPaneView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:dockpane="clr-namespace:HamlProAppModule.haml.ui.dockpane"
+             xmlns:oxy="http://oxyplot.org/wpf"
+             d:DataContext="{Binding Path=HamlProAppModule.haml.ui.dockpane.ProfileDockPaneViewModel}"
+             mc:Ignorable="d"
+             d:DesignHeight="300" d:DesignWidth="300">
+    <UserControl.Resources>
+        <dockpane:InvertVisibilityConverter x:Key="InvertVisibilityConverter"/>
+    </UserControl.Resources>
+    
+    <Grid >
+        <Grid Margin="3" Visibility="{Binding ProfileVisibility}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="10*" />
+                <RowDefinition Height="1*" />
+            </Grid.RowDefinitions>
+            <Grid >
+                <oxy:PlotView Model="{Binding ProfileModel}" Controller="{Binding Controller}"/>
+            </Grid>
+            <Grid Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="2*"/>
+                </Grid.ColumnDefinitions>
+                
+                <Button Grid.Column="1" x:Name="SaveButton"  Command="{Binding SaveCommand}"
+                        VerticalAlignment="Stretch" Margin="5, 0, 5, 0">Save</Button>
+                <Button Grid.Column="2" x:Name="ResetButton" Command="{Binding ResetCommand}"
+                        VerticalAlignment="Stretch" Margin="5, 0, 5, 0">Reset</Button>
+                <CheckBox Grid.Column="3" x:Name="cbIgnore" IsChecked="{Binding IsIgnoreChecked}" Command="{Binding IgnoreCommand}"
+                        VerticalAlignment="Stretch" Margin="5,0,5,0" CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}">Ignore</CheckBox>
+                <CheckBox Grid.Column="4" x:Name="cbBerm" IsChecked="{Binding IsBermChecked}" Content="Is Berm" Margin="5, 0, 5, 0" Command="{Binding BermCommand}"
+                          CommandParameter="{Binding IsChecked, RelativeSource={RelativeSource Self}}" />
+            </Grid>
+            </Grid>
+        <StackPanel Visibility="{Binding ProfileVisibility, Converter={StaticResource InvertVisibilityConverter}}" Margin="0,225,0,0" HorizontalAlignment="Center">
+            <TextBlock Text="{Binding NoProfileMsg}" />
+        </StackPanel>
+    </Grid>
+</UserControl>

@@ -1,0 +1,29 @@
+﻿using System.Collections.Generic;
+using System.Linq;
+using ArcGIS.Core.Geometry;
+using HamlProAppModule.haml.geometry;
+
+namespace HamlProAppModule.haml.util;
+
+public struct FeatureClassEntry
+{
+    public Dictionary<string, double> DoubleFields { get; set; }
+    public Dictionary<string, int> IntegerFields { get; set;}
+<<<<<<< working copy
+    
+    public Dictionary<string, string> StringFields { get; set; }
+=======
+    public Dictionary<string, string> StringFields { get; set;}
+    
+    public Profile P { get; set; }
+>>>>>>> merge rev
+    public Geometry Shape { get; set; }
+
+    public List<string> GetFields()
+    {
+        var ret = DoubleFields.Keys.ToList();
+        ret.AddRange(IntegerFields.Keys.ToList());
+        ret.AddRange(StringFields.Keys.ToList());
+        return ret;
+    }
+}

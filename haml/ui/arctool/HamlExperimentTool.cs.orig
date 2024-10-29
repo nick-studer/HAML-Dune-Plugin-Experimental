@@ -1,0 +1,132 @@
+﻿using System.Collections.Generic;
+using System.Linq;
+using System.Windows.Input;
+using ArcGIS.Core.CIM;
+using ArcGIS.Core.Geometry;
+using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Mapping;
+using HamlProAppModule.haml.geometry;
+using HamlProAppModule.haml.mltool;
+using HamlProAppModule.haml.ui.Experiment;
+
+namespace HamlProAppModule.haml.ui.arctool;
+
+public class HamlExperimentTool : HamlFeatureClassMapTool
+{
+    protected Dictionary<Coordinate3D, Profile> candidatePoints;
+    
+    protected HamlExperimentTool()
+    {
+        mhwChosen = true;
+        _useFirstMHWPoint = true;
+        candidatePoints = new Dictionary<Coordinate3D, Profile>();
+    }
+
+    protected override void InitHamlTool(Envelope mapViewExtent, Geometry? arcGeometry = null)
+    {
+        if (arcGeometry == null) return;
+        
+        Module1.ToggleState(PluginState.DoingOperationState, true);
+        
+        _resetPoint ??= fcPoly.Points.First(); // TODO: i dont think we actually need this at all
+
+        List<List<Coordinate3D>> baselineExtentIntersections = FindOrthogonalIntersections(fcPoly,
+            fcPoly.Points.First(), fcPoly.Length, out var dists, out var segIndices);
+
+        _initDists = dists;
+        _initSegIndices = segIndices;
+
+        Polyline candShoreline = BuildMHWShoreline(baselineExtentIntersections);
+        
+        HamlTool = new ProfilePolyline(_raster, _learner, candShoreline, mapViewExtent);
+        
+        GetCandidatePoints();
+
+        InitializeFirstAndLastProfiles();
+
+        InitBaseOverlays(); // TODO: not needed headlessly
+        UpdateVisibleProfiles(); // TODO: not needed headlessly
+        HamlTool.ActiveProfile = HamlTool.GetValidProfiles().First(p => !p.Saved);
+        
+        Module1.ToggleState(PluginState.ContourAvailableState, true);
+        Module1.ToggleState(PluginState.InitializedState, true);
+
+        Module1.ToggleState(PluginState.DoingOperationState, false);
+        
+        // LOCAL METHODS~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        void GetCandidatePoints()
+        {
+            for (int i = 0; i < HamlTool.GetVertices().Count; i++)
+            {
+                var vertex = HamlTool.GetVertices()[i];
+                
+                QueuedTask.Run(() =>
+                {
+                    var transect = BuildFixedTransect(vertex.GetPoint(), baselineExtentIntersections[i]);
+
+                    Profile p = new Profile(PolylineBuilderEx.CreatePolyline(transect),
+                        _raster,
+                        vertex,
+                        HamlTool.LabelSide,
+                        transect);
+
+                    candidatePoints.Add(vertex.GetPoint().Coordinate3D, p);
+                });
+            }
+        }
+    }
+
+    public void SmartInsert()
+    {
+        Module1.StatTracker.SaveCurrentSnapshot();
+        //HamlTool.TrainAllUntrainedProfiles(); //TODO: turn back on
+        // SmartInsert will select best candidate, insert into the tool and remove it from the list of candidates
+<<<<<<< working copy
+        QueuedTask.Run(()=>HamlTool.SmartInsert(ref candidatePoints, 1.0)).Wait();
+=======
+        HamlTool.SmartInsert(ref candidatePoints, 1.0);
+>>>>>>> merge rev
+        ExperimentDockPaneViewModel.Show();
+    }
+
+    private void InitializeFirstAndLastProfiles()
+    {
+        var firstProfileVertexPointCoords = HamlTool.GetVertices().First().GetPoint().Coordinate3D;
+        var firstProfile = candidatePoints[firstProfileVertexPointCoords];
+        HamlTool.SetDuneAlgoPlacements(firstProfile);
+        HamlTool.InsertProfile(0, firstProfile);
+
+        var lastVertexIndex = HamlTool.GetVertices().Count - 1;
+        var lastProfileVertexPointCoords = HamlTool.GetVertices().Last().GetPoint().Coordinate3D;
+        var lastProfile = candidatePoints[lastProfileVertexPointCoords];
+        HamlTool.SetDuneAlgoPlacements(lastProfile);
+        HamlTool.InsertProfile(lastVertexIndex, lastProfile);
+        
+        candidatePoints.Remove(firstProfileVertexPointCoords);
+        candidatePoints.Remove(lastProfileVertexPointCoords);
+    }
+
+    protected override void InitBaseOverlays()
+    {
+        base.InitBaseOverlays();
+        
+        OverlayController.AddOverlay(HamlTool.GetHighPointsAsPolyline(),
+            Module1.CreateHamlPolylineSymbol(CIMColor.CreateRGBColor(0,255,0)).MakeSymbolReference(), HamlGraphicType.HighContour);
+        
+        OverlayController.AddOverlay(HamlTool.GetLowPointsAsPolyline(),
+            Module1.CreateHamlPolylineSymbol(CIMColor.CreateRGBColor(255,0,0)).MakeSymbolReference(), HamlGraphicType.LowContour);
+    }
+    
+    protected override void OnToolKeyDown(MapViewKeyEventArgs k)
+    {
+        switch (k.Key)
+        {
+            case Key.K:
+                if(HamlTool != null){
+                    SmartInsert();
+                }
+                
+                break;
+        }
+    }
+}

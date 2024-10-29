@@ -1,0 +1,256 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using ArcGIS.Core.Geometry;
+using ArcGIS.Desktop.Mapping;
+using HamlProAppModule.haml.geometry;
+
+namespace HamlProAppModule.haml.util;
+
+public static class GeomUtil
+{
+    //GeometryEngine.Instance.Distance method has an issue with spatial references, must build "fresh"
+    //map points, even though the original map points have the same SR
+    public static double CalcDist(Coordinate3D mp1, Coordinate3D mp2, SpatialReference spatialReference)
+    {
+        return GeometryEngine.Instance.Distance(mp1.ToMapPoint(spatialReference), mp2.ToMapPoint(spatialReference));
+    }
+    
+    public static double Slope(double x1, double y1, double x2, double y2) {
+        var ret = y2-y1;
+        ret /= x2-x1;
+        return Math.Abs(ret);
+    }
+    
+    public static double SignedSlope(double x1, double y1, double x2, double y2) {
+        var ret = y2-y1;
+        ret /= x2-x1;
+        return ret;
+    }
+
+    // Looks for the largest z value along profile p, on the labelside of the given polyline
+    public static int GetMaxZIdxNaive(Profile p)
+    {
+        //Fancier ways to do this, but most either iterate over the data twice or aren't any faster (possibly slower)
+        double maxZ = double.MinValue;
+        int maxZIdx = -1;
+
+        var points = p.Points.ToList(); 
+        
+        for (int i = 0; i < points.Count; i++)
+        {
+            var mp = points[i];
+            if (points[i].Z > maxZ)
+            {
+                maxZIdx = i;
+                maxZ = mp.Z;
+            }                        
+        }
+        
+        return maxZIdx;
+    }
+    
+    // Looks for the largest z value along profile p, on the labelside of the given polyline
+    public static int GetMaxZIdxViaOnLabelSide(Profile p, Polyline polyline, LeftOrRightSide labelSide)
+    {
+        //Fancier ways to do this, but most either iterate over the data twice or aren't any faster (possibly slower)
+        double maxZ = double.MinValue;
+        int maxZIdx = -1;
+
+        var points = p.Points.ToList();
+        int vertPointIdx = p.GetVertexPointIndex();
+
+        if (vertPointIdx > 0)
+        {
+            vertPointIdx -= 1;
+        }
+
+        bool labelSideIsScreenLeft = GeomUtil.LabelSideLeftOfVertex(p.Points[vertPointIdx].ToMapPoint(), polyline, labelSide);
+        
+        if (labelSideIsScreenLeft)
+        {
+            points = points.Take(vertPointIdx).ToList();
+        }
+        else
+        {
+            points = points.Skip(vertPointIdx).ToList();
+        }
+        
+        for (int i = 0; i < points.Count; i++)
+        {
+            var mp = points[i];
+            if (points[i].Z > maxZ)
+            {
+                maxZIdx = labelSideIsScreenLeft ? i : i+vertPointIdx;
+                maxZ = mp.Z;
+            }                        
+        }
+        
+        // We restrict the maxZIdx to be no closer to the shoreline than 2 elements away, to leave room for the
+        // low point to be placed. This is necessary to avoid crashing and should only happen with bad data or bad
+        // choice of label side
+        if (labelSideIsScreenLeft)
+        {
+            maxZIdx = maxZIdx > vertPointIdx - 2 ? vertPointIdx - 2 : maxZIdx;
+        }
+        else
+        {
+            maxZIdx = maxZIdx < vertPointIdx + 2 ? vertPointIdx + 2 : maxZIdx;
+        }
+        
+        return maxZIdx;
+    }
+
+
+    // Utilize the fact that esri indexes elements from left (on the physical screen) to right, and top to bottom
+    // to see if the label side is on screen left or not. This is used to account for the fact that the orientation of
+    // polylines changes the esri interpretation of "left" and "right"
+    public static bool LabelSideLeftOfVertex(MapPoint mp, Polyline polyline, LeftOrRightSide labelSide)
+    {
+        GeometryEngine.Instance.QueryPointAndDistance(polyline, SegmentExtensionType.NoExtension, 
+            mp, AsRatioOrLength.AsLength, out double _, out double _, 
+            out LeftOrRightSide leftElementSide);
+        
+        return leftElementSide == labelSide;
+    }
+        
+    public static int CalcLowPointViaSlope(Profile p, int maxIndex)
+    {
+        int vertIdx = p.GetVertexPointIndex();
+        double largestChange = 0;
+
+        // if the labelside is screen left, we search upwards from the high point. otherwise, we search downwards.
+        int walkDirection = maxIndex > vertIdx ? -1 : 1;
+        int idxOfLargestSlopeChange = maxIndex + walkDirection*10;
+        
+        bool inRange = true;
+        int i = maxIndex + walkDirection * 3;
+        while(inRange)
+        {
+            // the negative of walk direction is the direction towards the high point
+            double prevSlope = CalcSlopeBetweenPoints(p, i - walkDirection, -walkDirection);
+            double currSlope = CalcSlopeBetweenPoints( p, i, -walkDirection);
+
+            if (double.IsNaN(prevSlope)|| double.IsNaN(currSlope))
+            {
+                return -1;
+            }
+
+            double slopeDx = walkDirection*(currSlope - prevSlope);
+
+            // since the walk is performed in the direction away from the high point, we want to find areas where the 
+            // dune is sloping downwards, particularly where the dune falls sharply but then begins to level off
+            if (slopeDx > largestChange && walkDirection*currSlope < 0)
+            {
+                largestChange = slopeDx;
+                idxOfLargestSlopeChange = i;
+            }
+
+            if (walkDirection == 1)
+            {
+                inRange = i < vertIdx;
+            }
+            else
+            {
+                inRange = vertIdx < i;
+            }
+
+            i += walkDirection;
+        }
+        
+        // make sure the low point doesnt get placed on top of or on the other side of the shore vertex
+        if (walkDirection == 1)
+        {
+            idxOfLargestSlopeChange = idxOfLargestSlopeChange > vertIdx - 1 ? vertIdx - 1 : idxOfLargestSlopeChange;
+        }
+        else
+        {
+            idxOfLargestSlopeChange = idxOfLargestSlopeChange < vertIdx + 1 ? vertIdx + 1 : idxOfLargestSlopeChange;
+        }
+
+        // make sure that the low index is not on the wrong side of the shoreline vertex
+        if (vertIdx > maxIndex && idxOfLargestSlopeChange >= vertIdx)
+        {
+            idxOfLargestSlopeChange = vertIdx - 1;
+        }
+        else if (maxIndex > vertIdx && idxOfLargestSlopeChange <= vertIdx)
+        {
+            idxOfLargestSlopeChange = vertIdx + 1;
+        }
+        
+        return idxOfLargestSlopeChange;
+    }
+
+    private static double CalcSlopeBetweenPoints(Profile p, int idx, int walkDirection)
+    {
+        int currIdx = idx;
+        int nextIdx = idx + walkDirection;
+
+        double slope;
+        if (nextIdx < p.Points.Count && nextIdx > 0)
+        {
+            var curr = p.Points[currIdx];
+            var next = p.Points[nextIdx];
+
+            slope = SignedSlope(currIdx, curr.Z, nextIdx, next.Z);    
+        }
+        else
+        {
+            slope = double.NaN;
+        }
+        
+        
+        return slope;
+    }
+
+    // Calculates the unnormalized dot product formed by the two vectors v1->v2 and v2->v3. Positive values of this
+    // indicate that the two vectors share a common component (they point at least partially in the same direction)
+    public static double CalcTwoSegmentDotProductUnnormalized(Vertex v1, Vertex v2, Vertex v3)
+    {
+        double ret = 0;
+
+        List<Double> segmentVector1 = new List<double>();
+        List<Double> segmentVector2 = new List<double>();
+
+        // x components
+        segmentVector1.Add(v2.GetX() - v1.GetX());
+        segmentVector2.Add(v3.GetX() - v2.GetX());
+
+        // y components
+        segmentVector1.Add(v2.GetY() - v1.GetY());
+        segmentVector2.Add(v3.GetY() - v2.GetY());
+
+        for (int i = 0; i < segmentVector1.Count; i++)
+        {
+            ret += segmentVector1[i] * segmentVector2[i];
+        }
+
+        return ret;
+    }
+<<<<<<< working copy
+    
+    public static Envelope? BuildPointExtent(MapPoint mp)
+    {
+        double len = MapView.Active.Extent.Length;
+        double width = MapView.Active.Extent.Width;
+        double dist = len > width ? len : width; 
+        Geometry ptBuffer = GeometryEngine.Instance.Buffer(mp, dist);
+
+        Polygon? buffer = ptBuffer as Polygon;
+
+        if (buffer != null)
+        {
+            return EnvelopeBuilderEx.CreateEnvelope(buffer.Extent);    
+        }
+
+        return null;
+=======
+
+    public static double CalcAngleBetweenPoints(MapPoint p1, MapPoint p2)
+    {
+        double xDiff = p2.X - p1.X;
+        double yDiff = p2.Y - p1.Y;
+        return Math.Atan2(yDiff, xDiff);
+>>>>>>> merge rev
+    }
+}

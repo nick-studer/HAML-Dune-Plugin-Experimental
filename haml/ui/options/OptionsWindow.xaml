@@ -1,0 +1,262 @@
+﻿<controls:ProWindow
+    xmlns:controls="clr-namespace:ArcGIS.Desktop.Framework.Controls;assembly=ArcGIS.Desktop.Framework" x:Class="HamlProAppModule.haml.ui.options.OptionsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:extensions="clr-namespace:ArcGIS.Desktop.Extensions;assembly=ArcGIS.Desktop.Extensions"
+    xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
+        xmlns:options="clr-namespace:HamlProAppModule.haml.ui.options"
+        mc:Ignorable="d"
+        Title="Options" Height="500" Width="500" MinHeight="300" MinWidth="300">
+
+    <controls:ProWindow.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <extensions:DesignOnlyResourceDictionary Source="pack://application:,,,/ArcGIS.Desktop.Framework;component\Themes\Default.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <x:Array x:Key="instructions" xmlns:sys="clr-namespace:System;assembly=mscorlib" Type="sys:String">
+                <sys:String>Right click your image</sys:String>
+                <sys:String>Select "Properties"</sys:String>
+                <sys:String>Go to the "Image Support Data" tab</sys:String>
+                <sys:String>Expand the "Images" drop down</sys:String>
+                <sys:String>Expand your image</sys:String>
+                <sys:String>Find the ABPP value</sys:String>
+            </x:Array>
+
+            <options:BooleanAndConverter x:Key="booleanAndConverter" />
+
+            <SolidColorBrush x:Key="DefaultBrush" Color="Black" />
+            <SolidColorBrush x:Key="ErrorBrush" Color="Red" />
+        </ResourceDictionary>
+    </controls:ProWindow.Resources>
+
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <ScrollViewer Grid.Row="0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid Grid.Row="0" Margin="10, 5, 10, 5">
+                    <Grid.RowDefinitions>
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                        <RowDefinition />
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Margin="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0, 0, 4, 0">
+                            <TextBlock Text="Output Geodatabase" />
+                            <TextBox Name="GDBPathTB" Text="{Binding GDBPath}" TextChanged="GDBPath_TextChanged" LostFocus="GDBPath_LostFocus">
+                                <TextBox.Style>
+                                    <Style>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ValidGDB}" Value="true">
+                                                <Setter Property="TextBox.BorderBrush" Value="{StaticResource DefaultBrush}" />
+                                                <Setter Property="TextBox.BorderThickness" Value="1" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ValidGDB}" Value="false">
+                                                <Setter Property="TextBox.BorderBrush" Value="{StaticResource ErrorBrush}" />
+                                                <Setter Property="TextBox.BorderThickness" Value="2" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                        </StackPanel>
+                        <Button Grid.Column="1" Height="16" VerticalAlignment="Bottom" Click="Browse_Click" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" ToolTip="Browse...">
+                            <Image Source="pack://application:,,,/HamlProAppModule;component/Images/AddInBrowse16.png" />
+                        </Button>
+                    </Grid>
+                    
+                    <Grid Grid.Row="1" Margin="0">
+                        <StackPanel Margin = "0" Orientation="Horizontal"> 
+                            <TextBlock Text = "Transect Size:" Margin = "5" />
+                            <RadioButton x:Name = "cbFixed" Margin = "5" Checked = "HandleFixedOrMapview" IsChecked="True"
+                                         GroupName = "FixedOrMapview" Content = "Fixed" /> 
+         
+                            <RadioButton x:Name = "cbMapview" Margin = "5" Checked = "HandleFixedOrMapview" 
+                                         GroupName = "FixedOrMapview" Content = "Mapview" /> 
+                        </StackPanel> 
+                    </Grid>
+                    
+                    <Grid Grid.Row="2" Margin="2">
+                        <StackPanel Name="spLandwardTransectLength" Margin="0, 0, 4, 0">
+                            <TextBlock Name="landwardTextBlock" Text="Landward Transect Length (meters, whole number >= 10):" TextWrapping="WrapWithOverflow" Margin="2"/>
+                            <TextBox Name="landwardTextBox" Text="{Binding TransectLandwardLength}" TextChanged="TransectLen_TextChanged" DataObject.Pasting="ProfileSpacing_Pasting" Margin="2"
+                                     IsEnabled="{Binding ElementName=cbFixed, Path=IsChecked}" />
+                        </StackPanel>
+                    </Grid>
+                    
+                    <Grid Grid.Row="3" Margin="2">
+                        <StackPanel Name="spSeawardTransectLength" Margin="0, 0, 4, 0">
+                            <TextBlock Name="seawardTextBlock" Text="Seaward Transect Length (meters, whole number >= 0):" TextWrapping="WrapWithOverflow" Margin="2"/>
+                            <TextBox Name="seawardTextBox" Text="{Binding TransectSeawardLength}" TextChanged="TransectLen_TextChanged" DataObject.Pasting="ProfileSpacing_Pasting" Margin="2"
+                                     IsEnabled="{Binding ElementName=cbFixed, Path=IsChecked}" />
+                        </StackPanel>
+                    </Grid>
+                    
+                    <Grid Grid.Row="4" Margin="2">
+                        <StackPanel Name="MeanHighWaterPointSP" Margin="0, 0, 4, 0">
+                            
+                            <TextBlock Text="Mean High Water Point (meters)" TextWrapping="WrapWithOverflow" Margin="2"/>
+                            
+                            <TextBox Text="{Binding SelectedMeanHighWaterPoint}" TextChanged="MeanHighWaterPoint_TextChanged" PreviewTextInput="MeanHighWaterPoint_PreviewTextInput" DataObject.Pasting="MeanHighWaterPoint_Pasting" Margin="2">
+                                <Validation.ErrorTemplate><ControlTemplate /></Validation.ErrorTemplate>
+                                <TextBox.Style>
+                                    <Style>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ValidMeanHighWaterPoint}" Value="true">
+                                                <Setter Property="TextBox.BorderBrush" Value="{StaticResource DefaultBrush}" />
+                                                <Setter Property="TextBox.BorderThickness" Value="1" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ValidMeanHighWaterPoint}" Value="false">
+                                                <Setter Property="TextBox.BorderBrush" Value="{StaticResource ErrorBrush}" />
+                                                <Setter Property="TextBox.BorderThickness" Value="2" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                        </StackPanel>
+                    </Grid>
+                    
+                    <Grid Grid.Row="5" Margin="0">
+                        <StackPanel Margin = "0" Orientation="Vertical"> 
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="1*" />
+                                    <ColumnDefinition Width="1*" />
+                                    <ColumnDefinition Width="1*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Vertical">
+                                    <TextBlock Name="insertThreshTb" Text = "Insert Thresh:" Margin = "5"/>
+                                    <TextBox Text="{Binding InsertThresh}" TextChanged="InsertThresh_TextChanged" Margin="2" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Vertical">
+                                    <TextBlock Name="crestThreshTb" Text = "Crest Thresh:" Margin = "5"/>
+                                    <TextBox Text="{Binding CrestThresh}" TextChanged="CrestThresh_TextChanged" Margin="2" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Vertical">
+                                    <TextBlock Name="toeThreshTb" Text = "Toe Thresh:" Margin = "5"/>
+                                    <TextBox Text="{Binding ToeThresh}" TextChanged="ToeThresh_TextChanged" Margin="2" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel> 
+                    </Grid>
+                    
+                    <Grid Grid.Row="6" Margin="2">
+                        <StackPanel Name="BitDepthSP" Margin="0, 0, 4, 0">
+                            <TextBlock Text="Imagery Layer" TextWrapping="WrapWithOverflow" />
+                            <ComboBox SelectionChanged="LayerListCB_SelectionChanged" ItemsSource="{Binding LayerList}" DisplayMemberPath="Name" SelectedItem="{Binding SelectedLayer}" />
+
+                            <TextBlock Text="Bit Depth" TextWrapping="WrapWithOverflow" />
+                            <TextBox Text="{Binding SelectedBitDepth}" TextChanged="BitDepth_TextChanged" PreviewTextInput="BitDepth_PreviewTextInput" DataObject.Pasting="BitDepth_Pasting">
+                                <Validation.ErrorTemplate><ControlTemplate /></Validation.ErrorTemplate>
+                                <TextBox.Style>
+                                    <Style>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ValidBitDepth}" Value="true">
+                                                <Setter Property="TextBox.BorderBrush" Value="{StaticResource DefaultBrush}" />
+                                                <Setter Property="TextBox.BorderThickness" Value="1" />
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding ValidBitDepth}" Value="false">
+                                                <Setter Property="TextBox.BorderBrush" Value="{StaticResource ErrorBrush}" />
+                                                <Setter Property="TextBox.BorderThickness" Value="2" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                        </StackPanel>
+                    </Grid>
+                    
+                </Grid>
+                <StackPanel Grid.Row="7" Name="InstructionsSP">
+                    <TextBlock Margin="10, 5, 10, 5" TextWrapping="WrapWithOverflow">How to find a NTF image's actual bit depth from properties:</TextBlock>
+                    <ItemsControl ItemsSource="{StaticResource instructions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <BulletDecorator Margin="10, 0, 10, 0">
+                                    <BulletDecorator.Bullet>
+                                        <Ellipse Height="5" Width="5" Fill="Black" />
+                                    </BulletDecorator.Bullet>
+                                    <Label Content="{Binding}" />
+                                </BulletDecorator>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+                <StackPanel Grid.Row="2" Orientation="Vertical">
+                    <Separator/>
+                    <Label FontWeight="Bold">Color Options</Label>
+                    <Separator/>
+                </StackPanel>
+                <Grid Grid.Row="3" >
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="1*"/>
+                        <RowDefinition Height="7*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Label Grid.Column="0" Grid.Row="1">Element</Label>
+                        <ComboBox Grid.Column="1" Grid.Row="1"  ItemsSource="{Binding Elements}" SelectedItem="{Binding SelectedElement}"
+                                  SelectionChanged="OnSelectionChanged" Height = "22" Width = "150" HorizontalAlignment = "Left"/>
+                        <Label Grid.Column="0" Grid.Row="2">Color</Label>
+                        <xctk:ColorPicker Grid.Column="1" Grid.Row="2" SelectedColor="{Binding SelectedColor}" SelectedColorChanged="OnSelectedColorChanged" Height = "22" Width = "150" HorizontalAlignment = "Left"/>
+                        <Button Grid.Row="2" Grid.Column="2" Click="Reset_Click" FontFamily="Wingdings 3" FontWeight="Bold" ToolTip="Reset to default color" Height="22" Margin="5,0,0,0">
+                            Q
+                        </Button>
+                        <Label Grid.Column="0" Grid.Row="3">Ignored Profile Opacity</Label>
+                        <Slider Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding OpacitySliderValue}" ValueChanged="OnOpacitySliderChanged"/>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </ScrollViewer>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Click="OK_Click" Style="{DynamicResource Esri_Button}" Content="OK">
+                <Button.IsEnabled>
+                    <MultiBinding Converter="{StaticResource booleanAndConverter}">
+                        <Binding Path="ValidGDB" />
+                        <Binding Path="ValidBitDepth" />
+                        <Binding Path="ValidMeanHighWaterPoint" />
+                        <Binding Path="ValidProfileSpacing" />
+                        <Binding Path="ValidTransectLengths" />
+                    </MultiBinding>
+                </Button.IsEnabled>
+            </Button>
+            <Button Click="Cancel_Click" Style="{DynamicResource Esri_Button}" Content="Cancel" />
+        </StackPanel>
+    </Grid>
+</controls:ProWindow>

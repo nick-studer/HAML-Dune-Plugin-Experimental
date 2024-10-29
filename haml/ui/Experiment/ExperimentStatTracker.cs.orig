@@ -1,0 +1,119 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace HamlProAppModule.haml.ui.experiment;
+
+public struct Snapshot
+{
+    internal bool PlacementIsMl;
+    internal double HighPtCorrectionDistance;
+    internal double LowPtCorrectionDistance;
+    internal double GroundTruthFrechetDistance;
+}
+
+public class ExperimentStats
+{
+    private List<Snapshot> _history;
+
+    private bool _currentPlacementIsML;
+    private double _currentHighPtCorrectionDistance;
+    private double _currentLowPtCorrectionDistance;
+    private double _currentGroundTruthFrechetDistance;
+
+    public ExperimentStats()
+    {
+        _history = new List<Snapshot>();
+
+        _currentGroundTruthFrechetDistance = 0;
+    }
+    
+    public Snapshot CreateSnapshot()
+    {
+        Snapshot currentSnapshot;
+        currentSnapshot.PlacementIsMl = _currentPlacementIsML;
+        currentSnapshot.HighPtCorrectionDistance = _currentHighPtCorrectionDistance;
+        currentSnapshot.LowPtCorrectionDistance = _currentLowPtCorrectionDistance;
+        currentSnapshot.GroundTruthFrechetDistance = _currentGroundTruthFrechetDistance;
+
+        return currentSnapshot;
+    }
+
+    // Snapshot the current state of the experiment before new profiles are inserted
+    public void SaveCurrentSnapshot()
+    {
+        _history.Add(CreateSnapshot());
+        RestoreDefaultValues();
+    }
+    
+    public List<Snapshot> History => _history;
+
+    public Snapshot Latest => _history.Last();
+
+    public Snapshot Current => CreateSnapshot();
+
+    public List<bool> PlacementIsMLHistory => _history.Select(snap => snap.PlacementIsMl).ToList();
+    public List<double> HighPointCorrectionDistanceHistory => _history.Select(snap => snap.HighPtCorrectionDistance).ToList();
+
+    // TODO: probably want to parameterize this so we don't duplicate this method for the low point
+    public List<int> CumulativeHighPointCorrectionCountHistory(){
+        List<int> ret = new List<int>();
+        int sum = 0;
+        foreach (double correctionDistance in HighPointCorrectionDistanceHistory)
+        {
+            if (Math.Abs(correctionDistance) < 0.001) // double comparison to 0.0
+            {
+                sum += 1;
+                ret.Add(sum);
+            }
+        }
+
+        return ret;
+    }
+    
+    public List<double> LowPointCorrectionDistanceHistory => _history.Select(snap => snap.LowPtCorrectionDistance).ToList();
+    
+    public List<int> CumulativeLowPointCorrectionCountHistory(){
+        List<int> ret = new List<int>();
+        int sum = 0;
+        foreach (double correctionDistance in LowPointCorrectionDistanceHistory)
+        {
+            if (Math.Abs(correctionDistance) < 0.001) // double comparison to 0.0
+            {
+                sum += 1;
+                ret.Add(sum);
+            }
+        }
+
+        return ret;
+    }
+    public List<double> GroundTruthFrechetDistanceHistory => _history.Select(snap => snap.GroundTruthFrechetDistance).ToList();
+
+    public bool PlacementIsML
+    {
+        set => _currentPlacementIsML = value;
+    }
+
+    public double HighPointCorrectionDistance
+    {
+        set => _currentHighPtCorrectionDistance = value;
+    }
+    
+    public double LowPointCorrectionDistance
+    {
+        set => _currentLowPtCorrectionDistance = value;
+    }
+
+    public double GroundTruthFrechetDistance
+    {
+        set => _currentGroundTruthFrechetDistance = value;
+    }
+
+    // Reset all of the per-profile stats
+    private void RestoreDefaultValues()
+    {
+        _currentPlacementIsML = true;
+        _currentHighPtCorrectionDistance = 0;
+        _currentLowPtCorrectionDistance = 0;
+    }
+}

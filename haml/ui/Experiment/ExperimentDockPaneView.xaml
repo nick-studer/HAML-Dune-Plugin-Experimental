@@ -1,0 +1,73 @@
+﻿<UserControl x:Class="HamlProAppModule.haml.ui.Experiment.ExperimentDockPaneView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:oxy="http://oxyplot.org/wpf"
+             xmlns:experiment="clr-namespace:HamlProAppModule.haml.ui.Experiment"
+             mc:Ignorable="d"
+             d:DataContext="{Binding Path=HamlProAppModule.haml.ui.Experiment.ExperimentDockPaneViewModel}"
+             d:DesignHeight="300" d:DesignWidth="300">
+    <UserControl.Resources>
+        <experiment:EnumStringConverter x:Key="DefaultEnumToStringConverter"/>
+    </UserControl.Resources>
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="6*" />
+            <RowDefinition Height="4*" />
+        </Grid.RowDefinitions>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="2*" />
+                <RowDefinition Height="10*" />
+            </Grid.RowDefinitions>
+            <StackPanel>
+                <TextBlock Text="History Plot"/> 
+                <StackPanel Orientation="Horizontal">
+                    <ComboBox ItemsSource="{Binding Path=PlotOptions}" 
+                              SelectedItem="{Binding Path=Stat1}"/>
+                              
+                    <ComboBox ItemsSource="{Binding Path=PlotOptions}" 
+                              SelectedItem="{Binding Path=Stat2}"/>
+                </StackPanel>
+            </StackPanel>
+            <oxy:PlotView Grid.Row="1" Model="{Binding Path=History}"/>
+        </Grid>
+        <Grid Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="1*" />
+                <RowDefinition Height="10*" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Current Statistics"/>
+            <ListView Grid.Row="1" ItemsSource="{Binding Path=Stats}">
+                <ListView.Resources>
+                    <Style TargetType="{x:Type ListViewItem}">
+                        <Setter Property="Background" Value="#f7f8f8"/>
+                    </Style>
+                    <Style TargetType="GridViewColumnHeader">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                    </Style>
+                </ListView.Resources>
+                <ListView.View>
+                    <GridView>
+                        <GridViewColumn>
+                            <GridViewColumn.CellTemplate>
+                                <DataTemplate>
+                                    <StackPanel>
+                                        <TextBlock Style="{DynamicResource Esri_TextBlockH4}">
+                                            <Run Text="{Binding Key, Mode=OneWay, Converter={StaticResource DefaultEnumToStringConverter}}"/>
+                                            <Run Text=": "/>
+                                            <Run Text="{Binding Value, Mode=OneWay}"/>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </GridViewColumn.CellTemplate>
+                        </GridViewColumn>
+                    </GridView>    
+                </ListView.View>
+            
+            </ListView>
+        </Grid>
+    </Grid>
+</UserControl>

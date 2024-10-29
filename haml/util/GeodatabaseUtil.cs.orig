@@ -1,0 +1,1453 @@
+#nullable enable
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using ArcGIS.Core.CIM;
+using ArcGIS.Core.Data;
+using ArcGIS.Core.Data.DDL;
+using ArcGIS.Core.Data.Exceptions;
+using ArcGIS.Core.Data.Raster;
+using ArcGIS.Core.Geometry;
+using ArcGIS.Core.Internal.Geometry;
+using ArcGIS.Desktop.Core;
+using ArcGIS.Desktop.Editing;
+using ArcGIS.Desktop.Framework.Dialogs;
+using ArcGIS.Desktop.Framework.Threading.Tasks;
+using ArcGIS.Desktop.Mapping;
+using HamlProAppModule.haml.geometry;
+using HamlProAppModule.haml.ui.options;
+
+namespace HamlProAppModule.haml.util
+{
+    public static class GeodatabaseUtil
+    {
+        public const string ProfilePointsDatasetName = "ProfilePoints";
+        public const string LowPointsFCName = "LowPoints";
+        public const string HighPointsFCName = "HighPoints";
+        public const string ShorelinePointsFCName = "ShorelinePoints";
+        public const string BaselineFCName = "BaselinePoints";
+        public const string Profile = "profile_id";
+        public const string IgnoreField = "ignore";
+        public const string BaselineOID = "baseline_id";
+        public const string BaselineSegmentIndex = "baseline_seg_idx";
+        public const string AlgoOrML = "algo_or_ml";
+        public const string Lon = "lon";
+        public const string Lat = "lat";
+        public const string Easting = "easting";
+        public const string Northing = "northing";
+        public const string MHWVal = "mhw";
+        public const string DLowX = "dlow_x";
+        public const string DLowZ = "dlow_z";
+        public const string DHighX = "dhigh_x";
+        public const string DHighZ = "dhigh_z";
+        public const string Berm = "berm";
+        public const string DistanceAlongBaseline = "dist_along_baseline";
+        public const string LandwardTransectLength = "land_transect_len";
+        public const string SeawardTransectLength = "sea_transect_len";
+        public const string OID = "objectid";
+
+        public static int gdbProfileCount = 0;
+
+        private static Dictionary<string, string> lowFieldDict;
+        private static Dictionary<string, string> highFieldDict;
+
+        static GeodatabaseUtil()
+        {
+            // both high and low points share these common attributes
+            var baseFieldDict = new Dictionary<string, string>
+            {
+                { Profile, "INTEGER" },
+                { Lon, "DOUBLE" },
+                { Lat, "DOUBLE" },
+                { Easting, "DOUBLE" },
+                { Northing, "DOUBLE" },
+                { DistanceAlongBaseline, "DOUBLE" },
+                { IgnoreField, "INTEGER" }
+            };
+
+            lowFieldDict = new Dictionary<string, string>
+            {
+                { DLowX, "DOUBLE" },
+                { DLowZ, "DOUBLE" }
+            };
+
+            highFieldDict = new Dictionary<string, string>
+            {
+                { DHighX, "DOUBLE" },
+                { DHighZ, "DOUBLE" },
+                { Berm, "INTEGER" }
+            };
+
+            baseFieldDict.ToList().ForEach(kvp =>
+            {
+                lowFieldDict[kvp.Key] = kvp.Value;
+                highFieldDict[kvp.Key] = kvp.Value;
+            });
+        }
+
+        public static string LoadGeometry(string geodatabase, String featureClassName, esriGeometryType geometryType)
+        {
+            var fcPath = Path.Combine(geodatabase, featureClassName);
+
+            var layers = MapView.Active?.Map?.Layers;
+
+            if (layers == null)
+            {
+                return
+                    $"No layers found. Please open a map and add the '{featureClassName}' feature class. It is located in this geodatabase: {geodatabase}";
+            }
+
+            return QueuedTask.Run(() =>
+            {
+                var featureLayers = layers.Where(lyr => lyr is FeatureLayer);
+                if (featureLayers.Count() <= 0)
+                {
+                    return
+                        $"The '{featureClassName}' feature class is not in the map. Please add it and select a row to edit. It is located in this geodatabase: {geodatabase}";
+                }
+
+                var contourLyr =
+                    featureLayers.FirstOrDefault(lyr => (lyr?.GetPath()?.OriginalString?.Equals(fcPath)).Value);
+
+                if (contourLyr == null)
+                {
+                    return
+                        $"The '{featureClassName}' feature class is not in the map. Please add it and select a row to edit. It is located in this geodatabase: {geodatabase}";
+                }
+
+                if (contourLyr is FeatureLayer fl)
+                {
+                    if (fl.ShapeType != geometryType)
+                    {
+                        return $"The selected feature layer is not a {geometryType} feature layer.";
+                    }
+
+                    if (fl.SelectionCount <= 0)
+                    {
+                        return $"No row has been selected on the '{featureClassName}' feature layer.\n" +
+                               "Please select a row, the first selection will be used.";
+                    }
+
+                    using (var selection = fl.GetSelection())
+                    {
+                        var objectIDs = selection.GetObjectIDs();
+                        List<long> firstOID = new List<long> { objectIDs.First() };
+                        var queryFilter = new ArcGIS.Core.Data.QueryFilter()
+                        {
+                            ObjectIDs = firstOID
+                        };
+                        using (var rowCursor = fl.GetFeatureClass().Search(queryFilter))
+                        {
+                            rowCursor.MoveNext();
+                            using (var row = rowCursor.Current)
+                            {
+                                if (row == null)
+                                {
+                                    return $"No row has been selected on the '{featureClassName}' feature layer.\n" +
+                                           "Please select a row, the first selection will be used.";
+                                }
+
+                                var shapeFieldIndex = row.FindField("Shape");
+                                Module1.loadedGeometry = (Geometry)row.GetOriginalValue(shapeFieldIndex);
+                                var bitDepthFieldIndex = row.FindField("BitDepth");
+                                Module1.loadedBitDepth = (int)row.GetOriginalValue(bitDepthFieldIndex);
+                                Module1.loadedOID = row.GetObjectID();
+                                Module1.loadedGDB = geodatabase;
+                                Module1.loadedFC = featureClassName;
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    return "The selected layer is not a feature layer.\n";
+                }
+
+                return "";
+            }).Result;
+        }
+
+        public static String GetGDBPath()
+        {
+            string gdbPath = "";
+            if (string.IsNullOrWhiteSpace(Module1.loadedGDB) || string.IsNullOrWhiteSpace(Module1.loadedFC))
+            {
+                if (string.IsNullOrWhiteSpace(OptionsVM.gdbPath))
+                {
+                    gdbPath = Module1.DefaultGDBPath;
+                }
+                else
+                {
+                    gdbPath = OptionsVM.gdbPath;
+                }
+            }
+            else
+            {
+                gdbPath = Module1.loadedGDB;
+            }
+
+            return gdbPath;
+        }
+
+        public static void CreateLineFeatureClass(string name, SpatialReference spatialReference,
+            Geodatabase geodatabase)
+        {
+            // This static helper routine creates a FieldDescription for a GlobalID field with default values
+            ArcGIS.Core.Data.DDL.FieldDescription globalIDFieldDescription = ArcGIS.Core.Data.DDL.FieldDescription.CreateGlobalIDField();
+
+            // This static helper routine creates a FieldDescription for an ObjectID field with default values
+            ArcGIS.Core.Data.DDL.FieldDescription objectIDFieldDescription = ArcGIS.Core.Data.DDL.FieldDescription.CreateObjectIDField();
+
+            List<ArcGIS.Core.Data.DDL.FieldDescription> fieldDescriptions = new List<ArcGIS.Core.Data.DDL.FieldDescription>()
+                { globalIDFieldDescription, objectIDFieldDescription };
+
+            ShapeDescription shapeDescription = new ShapeDescription(GeometryType.Polyline, spatialReference);
+
+            FeatureClassDescription featureClassDescription =
+                new FeatureClassDescription(name, fieldDescriptions, shapeDescription);
+
+            SchemaBuilder schemaBuilder = new SchemaBuilder(geodatabase);
+
+            schemaBuilder.Create(featureClassDescription);
+
+            schemaBuilder.Build();
+        }
+
+        public static bool DatasetExists(Geodatabase geodatabase, string datasetName)
+        {
+            try
+            {
+                FeatureDatasetDefinition tableDefinition =
+                    geodatabase.GetDefinition<FeatureDatasetDefinition>(datasetName);
+                tableDefinition.Dispose();
+                return true;
+            }
+            catch
+            {
+                // GetDefinition throws an exception if the definition doesn't exist
+                return false;
+            }
+        }
+
+        public static bool TableExists(Geodatabase geodatabase, string tableName)
+        {
+            try
+            {
+                TableDefinition tableDefinition = geodatabase.GetDefinition<TableDefinition>(tableName);
+                tableDefinition.Dispose();
+                return true;
+            }
+            catch
+            {
+                // GetDefinition throws an exception if the definition doesn't exist
+                return false;
+            }
+        }
+
+        public static async void DeleteProfilePoint(string featureClassName, int oid)
+        {
+            string gdbPath = GetGDBPath();
+            bool deletionResult = false;
+
+            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+            {
+                try
+                {
+                    using (FeatureDataset fd = geodatabase.OpenDataset<FeatureDataset>(ProfilePointsDatasetName))
+                    {
+                        using (fd.OpenDataset<FeatureClass>(featureClassName))
+                        {
+                            var fcPath = Path.Combine(gdbPath, fd.GetName(), featureClassName);
+                            var layers = MapView.Active?.Map?.Layers;
+                            var featureLayers = layers.Where(lyr => lyr is FeatureLayer);
+                            var featureClassLayer = featureLayers.FirstOrDefault(lyr =>
+                                lyr?.GetPath() != null && lyr.GetPath().OriginalString.Equals(fcPath));
+                            if (featureClassLayer == null)
+                            {
+                                MessageBox.Show("Unable to load " + fcPath + " to delete point!");
+                                return;
+                            }
+
+                            var eo = new EditOperation();
+                            eo.Delete(featureClassLayer, oid);
+                            eo.Execute();
+                            await Project.Current.SaveEditsAsync();
+                        }
+                    }
+                }
+                catch (GeodatabaseException gdbe)
+                {
+                    MessageBox.Show(gdbe.Message);
+                }
+            }
+        }
+
+        public static void CreateBaselineFeatureClass(SpatialReference sr, string fcName)
+        {
+            string gdbPath = GetGDBPath();
+
+            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+            {
+                if (!TableExists(geodatabase, fcName))
+                {
+                    // This static helper routine creates a FieldDescription for a GlobalID field with default values
+                    ArcGIS.Core.Data.DDL.FieldDescription globalIDFieldDescription = ArcGIS.Core.Data.DDL.FieldDescription.CreateGlobalIDField();
+
+                    // This static helper routine creates a FieldDescription for an ObjectID field with default values
+<<<<<<< working copy
+                    ArcGIS.Core.Data.DDL.FieldDescription objectIDFieldDescription = ArcGIS.Core.Data.DDL.FieldDescription.CreateObjectIDField();
+                    
+                    ArcGIS.Core.Data.DDL.FieldDescription baselineIDFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(BaselineOID, FieldType.Integer);
+=======
+                    DDL.FieldDescription objectIDFieldDescription = DDL.FieldDescription.CreateObjectIDField();
+
+                    DDL.FieldDescription baselineIDFieldDescription =
+                        new DDL.FieldDescription(BaselineOID, FieldType.Integer);
+>>>>>>> merge rev
+
+<<<<<<< working copy
+                    List<ArcGIS.Core.Data.DDL.FieldDescription> fieldDescriptions = new List<ArcGIS.Core.Data.DDL.FieldDescription>()
+                        { globalIDFieldDescription, objectIDFieldDescription , baselineIDFieldDescription };
+=======
+                    List<DDL.FieldDescription> fieldDescriptions = new List<DDL.FieldDescription>()
+                        { globalIDFieldDescription, objectIDFieldDescription, baselineIDFieldDescription };
+>>>>>>> merge rev
+
+                    ShapeDescription shapeDescription = new ShapeDescription(GeometryType.Point, sr);
+
+                    FeatureClassDescription featureClassDescription =
+                        new FeatureClassDescription(fcName, fieldDescriptions, shapeDescription);
+
+                    SchemaBuilder schemaBuilder = new SchemaBuilder(geodatabase);
+
+                    schemaBuilder.Create(featureClassDescription);
+
+                    schemaBuilder.Build();
+                }
+
+                bool baselineLayerExists = false;
+                foreach (var layer in MapView.Active.Map.GetLayersAsFlattenedList())
+                {
+                    if (fcName.Equals(layer.Name))
+                    {
+                        baselineLayerExists = true;
+                    }
+                }
+
+                if (!baselineLayerExists)
+                {
+                    AddPointLayer(gdbPath, "", fcName);
+                }
+            }
+        }
+
+        public static void CreatePointDatasetAndFeatureClass(SpatialReference sr)
+        {
+            string gdbPath = GetGDBPath();
+
+            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+            {
+                SchemaBuilder schemaBuilder = new SchemaBuilder(geodatabase);
+
+                // Create a FeatureDataset token and the dataset to hold the high and low points
+                FeatureDatasetDescription featureDatasetDescription =
+                    new FeatureDatasetDescription(ProfilePointsDatasetName, sr);
+                FeatureDatasetToken featureDatasetToken = schemaBuilder.Create(featureDatasetDescription);
+
+                if (!DatasetExists(geodatabase, ProfilePointsDatasetName))
+                {
+                    schemaBuilder.Build();
+                }
+
+                if (!TableExists(geodatabase, HighPointsFCName))
+                {
+                    schemaBuilder = new SchemaBuilder(geodatabase);
+                    FeatureClassDescription highFcd = BuildProfilePointFeatureClasses(sr, HighPointsFCName);
+                    BuildSchemaFeatureClass(schemaBuilder, featureDatasetToken, highFcd);
+                }
+
+                // Create a FeatureClass description for the high and low points
+                if (!TableExists(geodatabase, LowPointsFCName))
+                {
+                    schemaBuilder = new SchemaBuilder(geodatabase);
+                    FeatureClassDescription lowFcd = BuildProfilePointFeatureClasses(sr, LowPointsFCName);
+                    BuildSchemaFeatureClass(schemaBuilder, featureDatasetToken, lowFcd);
+                }
+
+                if (!TableExists(geodatabase, ShorelinePointsFCName))
+                {
+                    schemaBuilder = new SchemaBuilder(geodatabase);
+                    FeatureClassDescription shoreFcd = BuildShorelineFeatureClass(sr, ShorelinePointsFCName);
+                    BuildSchemaFeatureClass(schemaBuilder, featureDatasetToken, shoreFcd);
+                }
+            }
+
+            bool lowPointsExists = false;
+            bool highPointsExists = false;
+            bool shorePointsExists = false;
+
+            foreach (var layer in MapView.Active.Map.GetLayersAsFlattenedList())
+            {
+                if (LowPointsFCName.Equals(layer.Name))
+                {
+                    lowPointsExists = true;
+                }
+                else if (HighPointsFCName.Equals(layer.Name))
+                {
+                    highPointsExists = true;
+                }
+                else if (ShorelinePointsFCName.Equals(layer.Name))
+                {
+                    shorePointsExists = true;
+                }
+            }
+
+            if (!highPointsExists)
+            {
+                AddPointLayer(gdbPath, ProfilePointsDatasetName, HighPointsFCName);
+            }
+
+            if (!lowPointsExists)
+            {
+                AddPointLayer(gdbPath, ProfilePointsDatasetName, LowPointsFCName);
+            }
+
+            if (!shorePointsExists)
+            {
+                AddPointLayer(gdbPath, ProfilePointsDatasetName, ShorelinePointsFCName);
+            }
+        }
+
+        public static async void AddPointLayer(string gdbPath, string datasetName, string layerName)
+        {
+            Uri uri = new Uri(Path.Combine(gdbPath, datasetName, layerName));
+            await QueuedTask.Run(() => LayerFactory.Instance.CreateLayer(uri, MapView.Active.Map));
+        }
+
+        private static void BuildSchemaFeatureClass(SchemaBuilder schemaBuilder, FeatureDatasetToken token,
+            FeatureClassDescription fcDesc)
+        {
+            // Create a FeatureClass inside a FeatureDataset
+            schemaBuilder.Create(new FeatureDatasetDescription(token), fcDesc);
+
+            // Build status
+            bool buildStatus = schemaBuilder.Build();
+
+            // Build errors
+            if (!buildStatus)
+            {
+                IReadOnlyList<string> errors = schemaBuilder.ErrorMessages;
+
+                if (errors.Count > 0)
+                {
+                    String message = "Errors when making feature class for " + fcDesc.Name;
+                    GUI.ShowToast(message);
+                }
+            }
+        }
+
+        private static FeatureClassDescription BuildShorelineFeatureClass(SpatialReference sr, string featureClassName)
+        {
+<<<<<<< working copy
+            ArcGIS.Core.Data.DDL.FieldDescription globalIDFieldDescription = ArcGIS.Core.Data.DDL.FieldDescription.CreateGlobalIDField();
+            ArcGIS.Core.Data.DDL.FieldDescription objectIDFieldDescription = ArcGIS.Core.Data.DDL.FieldDescription.CreateObjectIDField();
+            ArcGIS.Core.Data.DDL.FieldDescription nameFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Profile, FieldType.Integer);
+            ArcGIS.Core.Data.DDL.FieldDescription northingFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Northing, FieldType.Double);
+            ArcGIS.Core.Data.DDL.FieldDescription eastingFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Easting, FieldType.Double);
+            ArcGIS.Core.Data.DDL.FieldDescription latFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Lon, FieldType.Double);
+            ArcGIS.Core.Data.DDL.FieldDescription lonFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Lat, FieldType.Double);
+            ArcGIS.Core.Data.DDL.FieldDescription mhwFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(MHWVal, FieldType.Double);
+            ArcGIS.Core.Data.DDL.FieldDescription landTransectLenFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(LandwardTransectLength, FieldType.Integer);
+            ArcGIS.Core.Data.DDL.FieldDescription seaTransectLenFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(SeawardTransectLength, FieldType.Integer);
+            
+            List<ArcGIS.Core.Data.DDL.FieldDescription> fieldDescriptions = new List<ArcGIS.Core.Data.DDL.FieldDescription>()
+=======
+            DDL.FieldDescription globalIDFieldDescription = DDL.FieldDescription.CreateGlobalIDField();
+            DDL.FieldDescription objectIDFieldDescription = DDL.FieldDescription.CreateObjectIDField();
+            DDL.FieldDescription nameFieldDescription = new DDL.FieldDescription(Profile, FieldType.String);
+            DDL.FieldDescription northingFieldDescription = new DDL.FieldDescription(Northing, FieldType.Double);
+            DDL.FieldDescription eastingFieldDescription = new DDL.FieldDescription(Easting, FieldType.Double);
+            DDL.FieldDescription latFieldDescription = new DDL.FieldDescription(Lon, FieldType.Double);
+            DDL.FieldDescription lonFieldDescription = new DDL.FieldDescription(Lat, FieldType.Double);
+            DDL.FieldDescription mhwFieldDescription = new DDL.FieldDescription(MHWVal, FieldType.Double);
+            DDL.FieldDescription landTransectLenFieldDescription =
+                new DDL.FieldDescription(LandwardTransectLength, FieldType.Integer);
+            DDL.FieldDescription seaTransectLenFieldDescription =
+                new DDL.FieldDescription(SeawardTransectLength, FieldType.Integer);
+
+            List<DDL.FieldDescription> fieldDescriptions = new List<DDL.FieldDescription>()
+>>>>>>> merge rev
+            {
+                globalIDFieldDescription,
+                objectIDFieldDescription,
+                nameFieldDescription,
+                lonFieldDescription,
+                latFieldDescription,
+                eastingFieldDescription,
+                northingFieldDescription,
+                mhwFieldDescription,
+                landTransectLenFieldDescription,
+                seaTransectLenFieldDescription
+            };
+
+            ShapeDescription shapeDescription = new ShapeDescription(GeometryType.Point, sr);
+            shapeDescription.HasZ = true;
+
+            return new FeatureClassDescription(featureClassName, fieldDescriptions, shapeDescription);
+        }
+
+        private static FeatureClassDescription BuildProfilePointFeatureClasses(SpatialReference spatialReference,
+            String featureClassName)
+        {
+            // TODO: ADD z_error, start_date, end_date. Need to talk with sponsor to determine how to move forward.
+
+<<<<<<< working copy
+            ArcGIS.Core.Data.DDL.FieldDescription globalIDFieldDescription = ArcGIS.Core.Data.DDL.FieldDescription.CreateGlobalIDField();
+            ArcGIS.Core.Data.DDL.FieldDescription objectIDFieldDescription = ArcGIS.Core.Data.DDL.FieldDescription.CreateObjectIDField();
+            ArcGIS.Core.Data.DDL.FieldDescription nameFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Profile, FieldType.Integer);
+            ArcGIS.Core.Data.DDL.FieldDescription distFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(DistanceAlongBaseline, FieldType.Double);
+            ArcGIS.Core.Data.DDL.FieldDescription ignoreFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Ignore, FieldType.Integer);
+            ArcGIS.Core.Data.DDL.FieldDescription baselineOidFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(BaselineOID, FieldType.Integer);
+            ArcGIS.Core.Data.DDL.FieldDescription baselineSegmentIndexFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(BaselineSegmentIndex, FieldType.Integer);
+            ArcGIS.Core.Data.DDL.FieldDescription algoOrMlFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(AlgoOrML, FieldType.String);
+=======
+            DDL.FieldDescription globalIDFieldDescription = DDL.FieldDescription.CreateGlobalIDField();
+            DDL.FieldDescription objectIDFieldDescription = DDL.FieldDescription.CreateObjectIDField();
+            DDL.FieldDescription nameFieldDescription = new DDL.FieldDescription(Profile, FieldType.String);
+            DDL.FieldDescription distFieldDescription =
+                new DDL.FieldDescription(DistanceAlongBaseline, FieldType.Double);
+            DDL.FieldDescription ignoreFieldDescription = new DDL.FieldDescription(IgnoreField, FieldType.Integer);
+            DDL.FieldDescription baselineOidFieldDescription = new DDL.FieldDescription(BaselineOID, FieldType.Integer);
+            DDL.FieldDescription baselineSegmentIndexFieldDescription =
+                new DDL.FieldDescription(BaselineSegmentIndex, FieldType.Integer);
+>>>>>>> merge rev
+
+            ArcGIS.Core.Data.DDL.FieldDescription shorelineDistXFieldDescription;
+            ArcGIS.Core.Data.DDL.FieldDescription elevationFieldDescription;
+            ArcGIS.Core.Data.DDL.FieldDescription? bermFieldDescription = null;
+            if (featureClassName.Equals(LowPointsFCName))
+            {
+                shorelineDistXFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(DLowX, FieldType.Double);
+                elevationFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(DLowZ, FieldType.Double);
+            }
+            else
+            {
+                shorelineDistXFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(DHighX, FieldType.Double);
+                elevationFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(DHighZ, FieldType.Double);
+                bermFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Berm, FieldType.Integer);
+            }
+
+            // Geo-coord fields
+            ArcGIS.Core.Data.DDL.FieldDescription northingFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Northing, FieldType.Double);
+            ArcGIS.Core.Data.DDL.FieldDescription eastingFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Easting, FieldType.Double);
+            ArcGIS.Core.Data.DDL.FieldDescription latFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Lon, FieldType.Double);
+            ArcGIS.Core.Data.DDL.FieldDescription lonFieldDescription = new ArcGIS.Core.Data.DDL.FieldDescription(Lat, FieldType.Double);
+
+            List<ArcGIS.Core.Data.DDL.FieldDescription> fieldDescriptions = new List<ArcGIS.Core.Data.DDL.FieldDescription>()
+            {
+                globalIDFieldDescription,
+                objectIDFieldDescription,
+                nameFieldDescription,
+                lonFieldDescription,
+                latFieldDescription,
+                eastingFieldDescription,
+                northingFieldDescription,
+                shorelineDistXFieldDescription,
+                elevationFieldDescription,
+                distFieldDescription,
+                ignoreFieldDescription,
+                baselineOidFieldDescription,
+                baselineSegmentIndexFieldDescription,
+                algoOrMlFieldDescription
+            };
+
+            if (bermFieldDescription is not null) fieldDescriptions.Add(bermFieldDescription);
+
+            ShapeDescription shapeDescription = new ShapeDescription(GeometryType.Point, spatialReference);
+            shapeDescription.HasZ = true;
+
+            return new FeatureClassDescription(featureClassName, fieldDescriptions, shapeDescription);
+        }
+
+        public static async Task<List<Geometry>> BuildFromFeatureClass(FeatureClass fc, bool inView)
+        {
+            return await QueuedTask.Run(() =>
+            {
+                try
+                {
+                    using (fc)
+                    {
+                        SpatialQueryFilter spatialQuery;
+                        if (inView)
+                        {
+                            spatialQuery = new SpatialQueryFilter()
+                            {
+                                FilterGeometry = MapView.Active.Extent,
+                                SpatialRelationship = SpatialRelationship.Intersects,
+                            };
+                        }
+                        else
+                        {
+                            spatialQuery = null;
+                        }
+
+                        List<Geometry> features = new List<Geometry>();
+
+                        using (RowCursor rc = fc.Search(spatialQuery, false))
+                        {
+                            while (rc.MoveNext())
+                            {
+                                using (Feature feature = (Feature)rc.Current)
+                                {
+                                    if (feature.GetShape() is MapPoint)
+                                    {
+                                        Geometry geom = feature.GetShape();
+                                        features.Add(MapPointBuilder.CreateMapPoint(geom as MapPoint,
+                                            geom.SpatialReference));
+                                    }
+                                    else if (feature.GetShape() is Polyline)
+                                    {
+                                        Polyline featurePoly = feature.GetShape() as Polyline;
+                                        features.Add(featurePoly);
+                                    }
+                                    else
+                                    {
+                                        // TODO: do we need to add the ability to load a polygon?
+                                    }
+                                }
+                            }
+                        }
+
+                        return features;
+                    }
+                }
+                catch (GeodatabaseException exObj)
+                {
+                    //TODO: serilog? 
+                    string message = exObj.Message;
+                    return null;
+                }
+            }) ?? throw new InvalidOperationException();
+        }
+
+        public static esriGeometryType GetShapeType(String layerName)
+        {
+            FeatureLayer? fl = MapView.Active.Map.FindLayers(layerName).First() as FeatureLayer;
+            return fl != null ? fl.ShapeType : esriGeometryType.esriGeometryNull;
+        }
+
+        public static FeatureClass? GetFeatureClassFromFeatureLayer(String fcName)
+        {
+            FeatureLayer? fl = MapView.Active.Map.FindLayers(fcName).First() as FeatureLayer;
+            return fl != null ? fl.GetFeatureClass() : null;
+        }
+
+        public static FeatureLayer? CheckSelectionType(string fcName)
+        {
+            IEnumerable<Layer> layers = MapView.Active.Map.Layers.Where(layer => layer is FeatureLayer);
+
+            return QueuedTask.Run(() =>
+            {
+                foreach (FeatureLayer featureLayer in layers)
+                {
+                    if (featureLayer.Name.Equals(fcName))
+                    {
+                        return featureLayer;
+                    }
+                }
+
+                return null;
+
+            }).Result;
+        }
+
+        /// <summary>
+        /// Loads a geometry based on a feature classes name and said geometry's OID
+        /// </summary>
+        /// <param name="fcName"></param>
+        /// <param name="oid"></param>
+        /// <returns></returns>
+        public static Geometry? GetFeatureFromOID(string fcName, long oid)
+        {
+            string gdbPath = GetGDBPath();
+            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+            {
+                try
+                {
+                    using (FeatureClass fc = geodatabase.OpenDataset<FeatureClass>(fcName))
+                    {
+                        QueryFilter queryFilter = new QueryFilter();
+                        using (var rowCursor = fc.Search(queryFilter))
+                        {
+                            while (rowCursor.MoveNext())
+                            {
+                                using (var row = rowCursor.Current)
+                                {
+                                    if (row != null)
+                                    {
+                                        var shapeFieldIndex = row.FindField("Shape");
+                                        long rowOid = row.GetObjectID();
+
+                                        if (rowOid == oid)
+                                        {
+                                            return row.GetOriginalValue(shapeFieldIndex) as Geometry;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (GeodatabaseException gdbe)
+                {
+                    MessageBox.Show("Unable to load .");
+                }
+            }
+
+            return null;
+        }
+
+        public static async Task<int> SaveMapPoint(MapPoint point, string fcName, long? baselineOID = null)
+        {
+            string gdbPath = GetGDBPath();
+
+            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+            {
+                try
+                {
+                    using (FeatureClass fc = geodatabase.OpenDataset<FeatureClass>(fcName))
+                    {
+                        int object_id = -1;
+                        var eo = new EditOperation();
+                        eo.Callback(context =>
+                        {
+                            using (var rb = fc.CreateRowBuffer())
+                            using (var row = fc.CreateRow(rb))
+                            {
+                                context.Invalidate(row);
+                                row.SetShape(MapPointBuilder.CreateMapPoint(point.X, point.Y, point.SpatialReference));
+
+                                if (baselineOID != null)
+                                {
+                                    row[BaselineOID] = (int)baselineOID.Value;
+                                }
+
+                                object_id = (int)row[OID];
+                                row.Store();
+                            }
+                        }, fc);
+
+                        eo.Execute();
+
+                        await Project.Current.SaveEditsAsync();
+                        return object_id;
+                    }
+
+                }
+                catch (GeodatabaseException gdbe)
+                {
+                    GUI.ShowToast(gdbe.Message);
+                }
+            }
+
+            return -1;
+        }
+
+        public static async void UpdateBaselinePoint(long oid, MapPoint point)
+        {
+            string gdbPath = GetGDBPath();
+            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+            {
+                try
+                {
+                    using FeatureClass fc = geodatabase.OpenDataset<FeatureClass>(BaselineFCName);
+                    var fcPath = Path.Combine(gdbPath, BaselineFCName);
+                    var layers = MapView.Active?.Map?.Layers;
+                    var featureLayers = layers.Where(lyr => lyr is FeatureLayer);
+                    var featureClassLayer = featureLayers.FirstOrDefault(lyr =>
+                        lyr?.GetPath() != null && lyr.GetPath().OriginalString.Equals(fcPath));
+                    if (featureClassLayer == null)
+                    {
+                        MessageBox.Show("Unable to load " + fcPath + " to update points!");
+                        return;
+                    }
+
+                    var eo = new EditOperation();
+                    eo.Modify(featureClassLayer, oid, point);
+                    await eo.ExecuteAsync();
+                    await Project.Current.SaveEditsAsync();
+                }
+                catch (GeodatabaseException gdbe)
+                {
+                    MessageBox.Show(gdbe.Message);
+                }
+            }
+        }
+
+        public static Tuple<long, MapPoint>? LoadBaselinePoint(long queryBaselineOID)
+        {
+            string gdbPath = GetGDBPath();
+            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+            {
+                try
+                {
+                    using (FeatureClass fc = geodatabase.OpenDataset<FeatureClass>(BaselineFCName))
+                    {
+                        QueryFilter queryFilter = new QueryFilter();
+
+                        using (var rowCursor = fc.Search(queryFilter))
+                        {
+                            while (rowCursor.MoveNext())
+                            {
+                                using (var row = rowCursor.Current)
+                                {
+                                    if (row != null)
+                                    {
+                                        long oid = row.GetObjectID();
+                                        int baselineOIDIdx = row.FindField(BaselineOID);
+                                        long val = (int)row.GetOriginalValue(baselineOIDIdx);
+
+                                        if (val == queryBaselineOID)
+                                        {
+                                            var shapeFieldIndex = row.FindField("Shape");
+
+                                            return new Tuple<long, MapPoint>(oid,
+                                                (MapPoint)row.GetOriginalValue(shapeFieldIndex));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (GeodatabaseException gdbe)
+                {
+                    MessageBox.Show("No saved baseline point, starting from beginning of feature class.");
+                }
+            }
+
+            return null;
+        }
+
+        public static async void SaveProfilesToGdb(List<Profile> profiles)
+        {
+            var highAdds = new List<FeatureClassEntry>();
+            var lowAdds = new List<FeatureClassEntry>();
+            var shoreAdds = new List<FeatureClassEntry>();
+            var highUpdates = new Dictionary<int, FeatureClassEntry>();
+            var lowUpdates = new Dictionary<int, FeatureClassEntry>();
+            var shoreUpdates = new Dictionary<int, FeatureClassEntry>();
+            var newProfiles = new List<Profile>();
+
+            var transform = ProjectionTransformation.Create(
+                MapView.Active.Extent.SpatialReference,
+                SpatialReferences.WGS84);
+
+            var newOrEdited = profiles.Where(p => !p.Saved || p.Edited).ToList();
+            newOrEdited.ForEach(p =>
+            {
+                var sharedDoubleFields = new Dictionary<string, double>
+                {
+                    { DistanceAlongBaseline, p.Vertex.DistAlongBaseline }
+                };
+
+                var sharedStringFields = new Dictionary<string, string>
+                {
+                    { Profile, p.Id },
+                };
+
+                var sharedIntegerFields = new Dictionary<string, int>
+                {
+                    { IgnoreField, p.Ignored ? 1 : 0 },
+                    { BaselineOID, p.Vertex.BaselineOid },
+                    { BaselineSegmentIndex, p.Vertex.BaselineSegIdx }
+                };
+
+<<<<<<< working copy
+                var sharedStringFields = new Dictionary<string, string>
+                { 
+                    {AlgoOrML, p.algoOrML==geometry.AlgoOrML.ALGO? "algo" : "ml"}
+                };
+                
+=======
+>>>>>>> merge rev
+                // handle low points
+                if (!p.IsBerm)
+                {
+                    var lowMp = p.PointAsMapPoint(p.LowIdx);
+                    var lowReprojected = (MapPoint)GeometryEngine.Instance.ProjectEx(lowMp, transform);
+
+                    var lowDoubleFields = new Dictionary<string, double>
+                    {
+                        { DLowX, p.CalcShorelineDist(p.LowIdx) },
+                        { DLowZ, lowMp.Z },
+                        { Lon, lowReprojected.X },
+                        { Lat, lowReprojected.Y },
+                        { Easting, lowMp.X },
+                        { Northing, lowMp.Y }
+                    };
+
+                    var lowIntegerFields = new Dictionary<string, int>(sharedIntegerFields);
+
+                    sharedDoubleFields.ToList().ForEach(kvp => lowDoubleFields.Add(kvp.Key, kvp.Value));
+
+                    var lowStringFields = new Dictionary<string, string>(sharedStringFields);
+
+                    var lowEntry = new FeatureClassEntry
+                    {
+                        StringFields = sharedStringFields,
+                        DoubleFields = lowDoubleFields,
+                        IntegerFields = lowIntegerFields,
+<<<<<<< working copy
+                        StringFields = lowStringFields,
+                        Shape = lowMp
+=======
+                        Shape = lowMp,
+                        P = p
+>>>>>>> merge rev
+                    };
+
+                    if (p.Saved && p.LowOid >= 0)
+                    {
+                        lowUpdates.Add(p.LowOid, lowEntry);
+                    }
+                    else
+                    {
+                        lowAdds.Add(lowEntry);
+                    }
+                }
+                else if (p.LowOid != -1) // remove the low point's mapPoint from the GDB
+                {
+                    DeleteProfilePoint(LowPointsFCName, p.LowOid);
+                    p.LowOid = -1;
+                }
+
+                // handle high points
+                var mp = p.PointAsMapPoint(p.HiIdx);
+                var reproj = (MapPoint)GeometryEngine.Instance.ProjectEx(mp, transform);
+
+                var doubleFields = new Dictionary<string, double>
+                {
+                    { DHighX, p.CalcShorelineDist(p.HiIdx) },
+                    { DHighZ, mp.Z },
+                    { Lon, reproj.X },
+                    { Lat, reproj.Y },
+                    { Easting, mp.X },
+                    { Northing, mp.Y }
+                };
+
+                var integerFields = new Dictionary<string, int>(sharedIntegerFields) { { Berm, p.IsBerm ? 1 : 0 } };
+
+                sharedDoubleFields.ToList().ForEach(kvp => doubleFields.Add(kvp.Key, kvp.Value));
+
+                var fce = new FeatureClassEntry
+                {
+                    DoubleFields = doubleFields,
+                    IntegerFields = integerFields,
+                    StringFields = sharedStringFields,
+<<<<<<< working copy
+                    Shape = mp
+=======
+                    Shape = mp,
+                    P = p
+>>>>>>> merge rev
+                };
+
+                if (p.Saved)
+                {
+                    highUpdates.Add(p.HighOid, fce);
+                }
+                else
+                {
+                    highAdds.Add(fce);
+                    newProfiles.Add(p);
+                }
+
+                // handle shore points
+                mp = p.Points[p.GetVertexPointIndex()].ToMapPoint();
+                reproj = (MapPoint)GeometryEngine.Instance.ProjectEx(mp, transform);
+
+                var shorelineIntFields = new Dictionary<string, int>()
+                {
+                    { LandwardTransectLength, Module1.TransectLandwardLength },
+                    { SeawardTransectLength, Module1.TransectSeawardLength }
+                };
+
+                var shorelineDoubleFields = new Dictionary<string, double>
+                {
+                    { MHWVal, mp.Z },
+                    { Lon, reproj.X },
+                    { Lat, reproj.Y },
+                    { Easting, mp.X },
+                    { Northing, mp.Y }
+                };
+
+                var shoreEntry = new FeatureClassEntry
+                {
+                    DoubleFields = shorelineDoubleFields,
+                    IntegerFields = shorelineIntFields,
+                    StringFields = sharedStringFields,
+                    Shape = mp,
+                    P = p
+                };
+
+                if (p.Saved)
+                {
+                    shoreUpdates.Add(p.ShoreOid, shoreEntry);
+                }
+                else
+                {
+                    shoreAdds.Add(shoreEntry);
+                }
+            });
+
+            List<int> highOids;
+            List<int> lowOids;
+            List<int> shoreOids; // TODO: do we need this?
+            using var geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(GetGDBPath())));
+            try
+            {
+                using var fd = geodatabase.OpenDataset<FeatureDataset>(ProfilePointsDatasetName);
+                using var highFc = fd.OpenDataset<FeatureClass>(HighPointsFCName);
+
+                highOids = InsertFeatureClassRows(highFc, highAdds).Result;
+                if (highUpdates.Count > 0)
+                {
+                    UpdateFeatureClassRows(highFc, highUpdates);
+                }
+
+                using var lowFc = fd.OpenDataset<FeatureClass>(LowPointsFCName);
+                lowOids = InsertFeatureClassRows(lowFc, lowAdds).Result;
+                if (lowUpdates.Count > 0)
+                {
+                    UpdateFeatureClassRows(lowFc, lowUpdates);
+                }
+
+                using var shoreFc = fd.OpenDataset<FeatureClass>(ShorelinePointsFCName);
+                shoreOids = InsertFeatureClassRows(shoreFc, shoreAdds).Result;
+                if (shoreUpdates.Count > 0)
+                {
+                    UpdateFeatureClassRows(shoreFc, shoreUpdates);
+                }
+
+                await Project.Current.SaveEditsAsync();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
+
+            newOrEdited.ForEach(p => p.SetOriginalValues());
+        }
+
+        public static async Task<List<int>> InsertFeatureClassRows(FeatureClass fc, List<FeatureClassEntry> entries)
+        {
+            var oids = new List<int>();
+
+            var eo = new EditOperation();
+            eo.Callback(context =>
+            {
+                oids = entries.Select(entry =>
+                {
+                    using var rb = fc.CreateRowBuffer();
+                    using var row = fc.CreateRow(rb);
+
+                    foreach (var kvp in entry.DoubleFields)
+                    {
+                        row[kvp.Key] = kvp.Value;
+                    }
+
+                    foreach (var kvp in entry.IntegerFields)
+                    {
+                        row[kvp.Key] = kvp.Value;
+                    }
+
+                    foreach (var kvp in entry.StringFields)
+                    {
+                        row[kvp.Key] = kvp.Value;
+                    }
+
+                    row.SetShape(entry.Shape);
+                    context.Invalidate(row);
+                    row.Store();
+
+                    int oid = (int)row[OID];
+                    switch (fc.GetName())
+                    {
+                        case LowPointsFCName:
+                            entry.P.LowOid = oid;
+                            break;
+                        case HighPointsFCName:
+                            entry.P.HighOid = oid;
+                            break;
+                        case ShorelinePointsFCName:
+                            entry.P.ShoreOid = oid;
+                            break;
+                        default:
+                            //todo: log
+                            break;
+                    }
+                    
+                    return oid;
+                }).ToList();
+            }, fc);
+
+            await eo.ExecuteAsync();
+
+            return oids;
+        }
+
+        public static async void UpdateFeatureClassRows(FeatureClass fc, Dictionary<int, FeatureClassEntry> entries)
+        {
+            var oids = entries.Keys.Select(Convert.ToInt64).ToList();
+
+            if (oids.Count > 0)
+            {
+                var eo = new EditOperation();
+
+                eo.Callback(context =>
+                {
+                    var filter = new QueryFilter
+                    {
+                        ObjectIDs = oids
+                    };
+                    using var rc = fc.Search(filter, false);
+
+                    while (rc.MoveNext())
+                    {
+                        using var row = (Feature)rc.Current;
+                        context.Invalidate(row);
+                        var entry = entries[(int)row[OID]];
+
+                        foreach (var kvp in entry.DoubleFields)
+                        {
+                            row[kvp.Key] = kvp.Value;
+                        }
+
+                        foreach (var kvp in entry.IntegerFields)
+                        {
+                            row[kvp.Key] = kvp.Value;
+                        }
+
+                        foreach (var kvp in entry.StringFields)
+                        {
+                            row[kvp.Key] = kvp.Value;
+                        }
+
+                        row.SetShape(entry.Shape);
+                        row.Store();
+                        context.Invalidate(row);
+                    }
+                }, fc);
+
+                await eo.ExecuteAsync();
+                await Project.Current.SaveEditsAsync();
+            }
+        }
+
+        public static void CountGDBProfiles()
+        {
+            string gdbPath = GetGDBPath();
+            int count = 0;
+            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+            {
+
+                if (DatasetExists(geodatabase, ProfilePointsDatasetName) &&
+                    TableExists(geodatabase, ShorelinePointsFCName))
+                {
+                    using (FeatureDataset fd = geodatabase.OpenDataset<FeatureDataset>(ProfilePointsDatasetName))
+                    using (FeatureClass fc = fd.OpenDataset<FeatureClass>(ShorelinePointsFCName))
+                    {
+                        using (var rowCursor = fc.Search())
+                        {
+                            while (rowCursor.MoveNext())
+                            {
+                                using (var row = rowCursor.Current)
+                                {
+                                    if (row != null)
+                                    {
+                                        count++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            gdbProfileCount = count;
+        }
+
+        /// <summary>
+        /// Loads profiles that have been created by the FC tool. Filtered based on the current MapView and the current
+        /// tool's profile IDs (if provided)
+        /// </summary>
+        /// <param name="r"></param>
+        /// <param name="pIDs"></param>
+        /// <returns></returns>
+        public static Dictionary<string, Profile> LoadExistingProfiles(Raster r, HashSet<String>? pIDs = null)
+        {
+            string gdbPath = GetGDBPath();
+            using (Geodatabase geodatabase = new Geodatabase(new FileGeodatabaseConnectionPath(new Uri(gdbPath))))
+            {
+                Dictionary<string, ProfilePointGDBData> vertices = new Dictionary<string, ProfilePointGDBData>();
+                Dictionary<string, ProfilePointGDBData> highPoints = new Dictionary<string, ProfilePointGDBData>();
+                Dictionary<string, ProfilePointGDBData> lowPoints = new Dictionary<string, ProfilePointGDBData>();
+
+                MapPoint mp;
+
+                SpatialQueryFilter spatialQueryFilter = new SpatialQueryFilter
+                {
+                    FilterGeometry = MapView.Active.Extent,
+                    SpatialRelationship = SpatialRelationship.Contains
+                };
+
+                if (pIDs is null)
+                {
+                    pIDs = new HashSet<string>();
+                }
+                
+                vertices = LoadExistingPoint(geodatabase, ProfilePointsDatasetName, ShorelinePointsFCName, spatialQueryFilter, pIDs);
+                highPoints = LoadExistingPoint(geodatabase, ProfilePointsDatasetName, HighPointsFCName, spatialQueryFilter, pIDs);
+                lowPoints = LoadExistingPoint(geodatabase, ProfilePointsDatasetName, LowPointsFCName, spatialQueryFilter, pIDs);
+                
+                return BuildProfilesFromGDB(r, vertices, highPoints, lowPoints);
+            }
+        }
+
+        private static Dictionary<string, ProfilePointGDBData> LoadExistingPoint(Geodatabase gdb, String fdName, string fcName, SpatialQueryFilter sqf, HashSet<string> currentToolProfileIds)
+        {
+            Dictionary<string, ProfilePointGDBData> ret = new Dictionary<string, ProfilePointGDBData>();
+            
+            try
+            {
+                using (FeatureDataset fd = gdb.OpenDataset<FeatureDataset>(fdName))
+                using (FeatureClass fc = fd.OpenDataset<FeatureClass>(fcName))
+                {
+                    using (var rowCursor = fc.Search(sqf))
+                    {
+                        while (rowCursor.MoveNext())
+                        {
+                            using (var row = rowCursor.Current)
+                            {
+                                if (row != null)
+                                {
+                                    var profileNameIndex = row.FindField(Profile);
+                                    string profileId = (string)row.GetOriginalValue(profileNameIndex);
+
+                                    if (!currentToolProfileIds.Contains(profileId))
+                                    {
+                                        if (fcName.Equals(ShorelinePointsFCName))
+                                        {
+                                            ret.Add(profileId, new ShorelineGDBData(row));
+                                        }
+                                        else if (fcName.Equals(HighPointsFCName))
+                                        {
+                                            ret.Add(profileId, new HighPointGDBData(row));
+                                        }
+                                        else if (fcName.Equals(LowPointsFCName))
+                                        {
+                                            ret.Add(profileId, new ProfilePointGDBData(row));
+                                        }
+                                    }
+                                    else
+                                    {
+                                        int x = 0;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (GeodatabaseException gdbe)
+            {
+                //todo: log
+            }
+
+            return ret;
+        } 
+
+        public static Dictionary<string, Profile> BuildProfilesFromGDB(Raster r,
+            Dictionary<string, ProfilePointGDBData> vertices, Dictionary<string, ProfilePointGDBData> highPoints,
+            Dictionary<string, ProfilePointGDBData> lowPoints)
+        {
+            Dictionary<string, Profile> ret = new Dictionary<string, Profile>();
+
+            foreach (var kvp in vertices)
+            {
+                string profileId = kvp.Key;
+
+                // if high point is not in view, continue
+                if (!highPoints.ContainsKey(profileId)) continue;
+
+                HighPointGDBData hgdb = (HighPointGDBData)highPoints[profileId];
+
+                // if low point is not in view and the profile is not a berm, continue
+                if (!lowPoints.ContainsKey(profileId) && !hgdb.IsBerm) continue;
+
+                ShorelineGDBData sgdb = (ShorelineGDBData)vertices[profileId];
+
+                // TODO: atan2 angles 
+                MapPoint shorePoint = sgdb.Mp;
+                MapPoint highPoint = hgdb.Mp;
+                double xDiff = highPoint.X - shorePoint.X;
+                double yDiff = highPoint.Y - shorePoint.Y;
+                double angle = Math.Atan2(yDiff, xDiff);
+
+                MapPoint p1 = GeometryEngine.Instance.ConstructPointFromAngleDistance(shorePoint,
+                    angle, sgdb.LandwardDist);
+                MapPoint p2 = GeometryEngine.Instance.ConstructPointFromAngleDistance(shorePoint,
+                    angle + Math.PI, sgdb.SeawardDist);
+
+                Polyline transect = PolylineBuilder.CreatePolyline(new List<MapPoint> { p1, p2 });
+                List<Coordinate3D> intersectionPoints =
+                    RasterUtil.CreateIntersectionMapCoordinates(r, transect, out List<int> nonNaNIndices);
+
+                Vertex v = new Vertex(sgdb.Mp,
+                    new SegmentConstraint(transect.Points[0], transect.Points[1]));
+                v.DistAlongBaseline = hgdb.ShorelineDist;
+
+                MapPoint? lowMp = null;
+                int? lowOid = null;
+
+                if (lowPoints.ContainsKey(profileId))
+                {
+                    ProfilePointGDBData lgdb = lowPoints[profileId];
+                    lowMp = lgdb.Mp;
+                    lowOid = lgdb.Oid;
+                }
+                
+                v.BaselineOid = sgdb.BaselineOid;
+                v.BaselineSegIdx = sgdb.BaselineSegIndex;
+                v.ProfileIdx = sgdb.ProfileNumber;
+                ret.Add(profileId, new Profile(transect, r, v, sgdb.Oid, hgdb.Mp, hgdb.Oid, 
+                    lowMp, lowOid, hgdb.Ignore, intersectionPoints));
+            }
+
+            return ret;
+        }
+
+        public class ShorelineGDBData : ProfilePointGDBData
+        {
+            private int landwardDist;
+            private int seawardDist;
+            private int baselineOID;
+            private int baselineSegIndex;
+            private int profileNumber;
+            
+            public ShorelineGDBData(Row row) : base(row)
+            {
+                var seawardDistIdx = row.FindField(SeawardTransectLength);
+                seawardDist = (int)row.GetOriginalValue(seawardDistIdx);
+
+                var landwardDistIdx = row.FindField(LandwardTransectLength);
+                landwardDist = (int)row.GetOriginalValue(landwardDistIdx);
+
+                var profileIdIndex = row.FindField(Profile);
+                string[] profileInfo = ((string)row.GetOriginalValue(profileIdIndex)).Split('_');
+
+                profileNumber = Int32.Parse(profileInfo[0]);
+                baselineOID = Int32.Parse(profileInfo[1]);
+                baselineSegIndex = Int32.Parse(profileInfo[2]);
+            }
+
+            public int LandwardDist
+            {
+                get => landwardDist;
+                set => landwardDist = value;
+            }
+
+            public int SeawardDist
+            {
+                get => seawardDist;
+                set => seawardDist = value;
+            }
+
+            public int BaselineOid
+            {
+                get => baselineOID;
+                set => baselineOID = value;
+            }
+
+            public int BaselineSegIndex
+            {
+                get => baselineSegIndex;
+                set => baselineSegIndex = value;
+            }
+
+            public int ProfileNumber
+            {
+                get => profileNumber;
+                set => profileNumber = value;
+            }
+        }
+
+        public class HighPointGDBData : ProfilePointGDBData
+        {
+            private double shorelineDist;
+            private bool isBerm;
+            private bool ignore;
+           
+            public HighPointGDBData(Row row) : base(row)
+            {
+                int distFieldIndex = row.FindField(DistanceAlongBaseline);
+                shorelineDist = (double)row.GetOriginalValue(distFieldIndex);
+                
+                int ignoreFieldIndex = row.FindField(IgnoreField);
+                int intIgnore = (int)row.GetOriginalValue(ignoreFieldIndex);
+                ignore = intIgnore == 1;
+                
+                int bermFieldIndex = row.FindField(Berm);
+                int bermVal = (int)row.GetOriginalValue(bermFieldIndex);
+                isBerm = bermVal == 1;
+            }
+            public double ShorelineDist
+            {
+                get => shorelineDist;
+                set => shorelineDist = value;
+            }
+
+            public bool IsBerm
+            {
+                get => isBerm;
+                set => isBerm = value;
+            }
+
+            public bool Ignore
+            {
+                get => ignore;
+                set => ignore = value;
+            }
+        }
+
+        public class ProfilePointGDBData
+        {
+            private MapPoint mp;
+            private int oid;
+
+            public ProfilePointGDBData(Row row)
+            {
+                oid = (int)row.GetObjectID();
+                int shapeFieldIndex = row.FindField("Shape");
+                mp = MapPointBuilder.CreateMapPoint((MapPoint)row.GetOriginalValue(shapeFieldIndex),
+                    MapView.Active.Extent.SpatialReference);
+            }
+
+            public MapPoint Mp
+            {
+                get => mp;
+                set => mp = value ?? throw new ArgumentNullException(nameof(value));
+            }
+
+            public int Oid
+            {
+                get => oid;
+                set => oid = value;
+            }
+        }
+    }
+}

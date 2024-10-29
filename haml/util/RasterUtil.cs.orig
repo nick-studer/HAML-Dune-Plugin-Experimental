@@ -1,0 +1,292 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using ArcGIS.Core.Data.Raster;
+using ArcGIS.Core.Geometry;
+using ArcGIS.Desktop.Mapping;
+
+namespace HamlProAppModule.haml.util;
+
+public static class RasterUtil
+{
+    public static double GetPixelDistance(Raster r, MapPoint mp1, MapPoint mp2)
+    {
+        var (x1, y1) = r.MapToPixel(mp1.X, mp1.Y);
+
+        var (x2, y2) = r.MapToPixel(mp2.X, mp2.Y);
+
+        return Math.Sqrt((y1 - y2) * (y1 - y2) + (x1 - x2) * (x1 - x2));
+    }
+
+    public static List<Coordinate3D> CreateIntersectionMapCoordinates(Raster r, Polyline p, out List<int> nonNaNIndices)
+    {
+        // get all (x,y) MapPoints that fall on the constraint
+        var intersectionCoords = CalcIntersectionMapPoints(p.Points.ToList());
+        
+        // grab the z-value data from the raster based on the previously calculated (x,y) locations
+        return CreateIntersectionMapCoordinates(r, intersectionCoords, out nonNaNIndices);
+    }
+
+    
+
+    /*
+     * Finds all (x,y) intersection points between the endpoints
+     */
+    private static List<MapPoint> CalcIntersectionMapPoints(List<MapPoint> endpoints) { 
+        var ret = new List<MapPoint>();
+        double step = 0.1; // parameter related to aliasing. higher values = more aliasing but quicker computation. should be 0<step<=1
+        
+        for (var i = 0; i < endpoints.Count - 1; i++)
+        {
+            var (vX1,vY1) = (endpoints[i].X, endpoints[i].Y);
+            var (vX2,vY2) = (endpoints[i+1].X,endpoints[i+1].Y);
+            var slope = GeomUtil.Slope(vX1, vY1, vX2, vY2);
+                
+            double xS, xE, yS, yE;
+
+            if (slope < 1.0) { 
+                //Always scan from "left" to "right".
+                if (vX1 < vX2) {
+                    xS = vX1; 
+                    xE = vX2; 
+                    yS = vY1; 
+                    yE = vY2;
+                } else {
+                    xS = vX2; 
+                    xE = vX1; 
+                    yS = vY2; 
+                    yE = vY1;
+                }
+
+                double err = 0; 
+                var x = xS; 
+                var y = yS; 
+                var yInc = yS <= yE ? step : -step;
+
+                // TODO: why did i have to change to <= from <?
+                for (; x <= xE; x++) {
+                    ret.Add(MapPointBuilder.CreateMapPoint(x, y, MapView.Active.Extent.SpatialReference));
+
+                    err += slope;
+                    
+                    while (err >= 0.5*step) { 
+                        y += yInc; 
+                        err -= step;
+                    }
+                }
+            } else {  //Scan on the y-axis instead
+                if (vY1 < vY2) {
+                    yS = vY1; 
+                    yE = vY2; 
+                    xS = vX1; 
+                    xE = vX2;
+                } else { 
+                    yS = vY2; 
+                    yE = vY1; 
+                    xS = vX2; 
+                    xE = vX1;
+                }
+
+                var dErr = 1 / slope;
+                double err = 0;
+                var y = yS;
+                var x = xS;
+                var xInc = xS <= xE ? step : -step;
+
+                for (; y <= yE; y++) {
+                    ret.Add(MapPointBuilder.CreateMapPoint(x, y, MapView.Active.Extent.SpatialReference));
+
+                    err += dErr;
+
+                    while (err >= 0.5*step) {
+                        x += xInc;
+                        err -= step;
+                    }
+                }
+            }
+        }
+        return ret;
+    } 
+    
+    
+   /* 
+   * Iterates over a list of previously calculated intersection MapPoints and finds their associated Z values based
+   * on the raster data.
+   */
+    private static List<Coordinate3D> CreateIntersectionMapCoordinates(Raster raster, List<MapPoint> intersectionMapPoints, out List<int> nonNaNIndices)
+    {
+        var ret = new List<Coordinate3D>();
+        nonNaNIndices = new List<int>();
+        MapPoint? prevMapPoint = null;
+        Tuple<int, int>? prevPixel = null;
+        
+        foreach (MapPoint mapPoint in intersectionMapPoints)
+        {
+            Tuple<int, int> rasterPx = raster.MapToPixel(mapPoint.X, mapPoint.Y);
+                
+            if (prevPixel is null && prevMapPoint is null)
+            {
+                prevPixel = rasterPx;
+                prevMapPoint = mapPoint;
+            }
+            else
+            {
+                if (!prevPixel.Equals(rasterPx))
+                {
+                    var obj = raster.GetPixelValue(0, prevPixel.Item1, prevPixel.Item2);
+                    
+                    float zValue;
+                    if (obj is not float f)
+                    {
+                        zValue = Convert.ToSingle(obj);
+                    }
+                    else
+                    {
+                        zValue = f;
+                        nonNaNIndices.Add(ret.Count);
+                    }
+
+                    ret.Add(new Coordinate3D(prevMapPoint.X, prevMapPoint.Y, zValue));
+                }
+
+                prevPixel = rasterPx;
+                prevMapPoint = mapPoint;
+            }
+        }
+            
+        return ret;
+    }
+
+    //The ArcPro SDK makes it really tough to get the NITF metadata I need
+    // (or the process is undocumented).  The returned values are not the true
+    // min/max pixel values.
+    //E.g. WorldView imagery has 11BPP, but this method will return a max pixel value
+    // of ushort.MaxValue.
+    public static (decimal, decimal) GetMinMaxPixelValues(RasterPixelType pixelType) {
+        switch( pixelType ) {
+            case RasterPixelType.UNKNOWN:
+                return (new Decimal(0), new Decimal(0));
+            case RasterPixelType.U1:
+                return (new Decimal(0), new Decimal(1));
+            case RasterPixelType.U2:
+                return (new Decimal(0), new Decimal(3));
+            case RasterPixelType.U4:
+                return (new Decimal(0), new Decimal(16));
+            case RasterPixelType.UCHAR:
+                return (new Decimal(byte.MinValue), new Decimal(byte.MaxValue));
+            case RasterPixelType.CHAR:
+                return (new Decimal(sbyte.MinValue), new Decimal(sbyte.MaxValue));
+            case RasterPixelType.USHORT:
+                return (new Decimal(ushort.MinValue), new Decimal(ushort.MaxValue));
+            case RasterPixelType.SHORT:
+                return (new Decimal(short.MinValue), new Decimal(short.MaxValue));
+            case RasterPixelType.ULONG:
+                return (new Decimal(ulong.MinValue), new Decimal(ulong.MaxValue));
+            case RasterPixelType.LONG:
+                return (new Decimal(long.MinValue), new Decimal(long.MaxValue));
+            case RasterPixelType.FLOAT:
+                //TODO: figure out a better way to handle this
+                return (new Decimal(long.MinValue), new Decimal(long.MaxValue));
+            case RasterPixelType.DOUBLE:
+                return (new Decimal(double.MinValue), new Decimal(double.MaxValue));
+            case RasterPixelType.COMPLEX:
+                return (new Decimal(0), new Decimal(0));
+            case RasterPixelType.DCOMPLEX:
+                return (new Decimal(0), new Decimal(0));
+            case RasterPixelType.CSHORT:
+                return (new Decimal(0), new Decimal(0));
+            case RasterPixelType.CLONG:
+                return (new Decimal(0), new Decimal(0));
+        }
+
+        return (new Decimal(0), new Decimal(0));
+    }
+    
+    public static (decimal, decimal) GetMinMaxPixelValues(RasterPixelType pixelType, int bitDepth) {
+        var maxPixelValue = new Decimal(Math.Pow(2, bitDepth) - 1);
+        switch (pixelType)
+        {
+            case RasterPixelType.CHAR:
+            case RasterPixelType.SHORT:
+            case RasterPixelType.LONG:
+            case RasterPixelType.FLOAT:
+            case RasterPixelType.DOUBLE:
+                var half = (maxPixelValue + 1) / 2;
+                maxPixelValue = half - 1;
+                var minPixelValue = half * -1;
+                return (minPixelValue, maxPixelValue);
+            case RasterPixelType.UNKNOWN:
+            case RasterPixelType.COMPLEX:
+            case RasterPixelType.DCOMPLEX:
+            case RasterPixelType.CSHORT:
+            case RasterPixelType.CLONG:
+                return (new Decimal(0), new Decimal(0));
+            case RasterPixelType.U1:
+            case RasterPixelType.U2:
+            case RasterPixelType.U4:
+            case RasterPixelType.UCHAR:
+            case RasterPixelType.USHORT:
+            case RasterPixelType.ULONG:
+            default:
+                return (new Decimal(0), maxPixelValue);
+        }
+<<<<<<< working copy
+    }
+=======
+        
+        public static (decimal, decimal) GetMinMaxPixelValues(RasterPixelType pixelType, int bitDepth) {
+            var maxPixelValue = new Decimal(Math.Pow(2, bitDepth) - 1);
+            switch (pixelType)
+            {
+                case RasterPixelType.CHAR:
+                case RasterPixelType.SHORT:
+                case RasterPixelType.LONG:
+                case RasterPixelType.FLOAT:
+                case RasterPixelType.DOUBLE:
+                    var half = (maxPixelValue + 1) / 2;
+                    maxPixelValue = half - 1;
+                    var minPixelValue = half * -1;
+                    return (minPixelValue, maxPixelValue);
+                case RasterPixelType.UNKNOWN:
+                case RasterPixelType.COMPLEX:
+                case RasterPixelType.DCOMPLEX:
+                case RasterPixelType.CSHORT:
+                case RasterPixelType.CLONG:
+                    return (new Decimal(0), new Decimal(0));
+                case RasterPixelType.U1:
+                case RasterPixelType.U2:
+                case RasterPixelType.U4:
+                case RasterPixelType.UCHAR:
+                case RasterPixelType.USHORT:
+                case RasterPixelType.ULONG:
+                default:
+                    return (new Decimal(0), maxPixelValue);
+            }
+        }
+
+        public static double CalcPolygonAverageZ(Raster r, Polygon poly)
+        {
+            List<double> zList = new List<double>();
+            
+            for (int i = 0; i<poly.Points.Count; i++)
+            {
+                var mapPixels = r.MapToPixel(poly.Points[i].X, poly.Points[i].Y);
+                var obj = r.GetPixelValue(0, mapPixels.Item1, mapPixels.Item2);
+
+                float zValue;
+                if (obj is not float f)
+                {
+                    zValue = Convert.ToSingle(obj);
+                }
+                else
+                {
+                    zValue = f;
+                }
+                
+                zList.Add(zValue);
+            }
+
+            return zList.Average();
+        }
+>>>>>>> merge rev
+}

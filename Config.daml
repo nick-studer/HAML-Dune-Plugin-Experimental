@@ -1,0 +1,273 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ArcGIS defaultAssembly="HamlProAppModule.dll" 
+        defaultNamespace="HamlProAppModule" 
+        xmlns="http://schemas.esri.com/DADF/Registry">
+  
+  <AddInInfo id="{2f510bf4-1a7a-48e6-b9cf-e133ed9b9f32}" version="1.0" desktopVersion="3.0.36057">
+    <Name>HamlProAppModule</Name>
+    <Description>HamlProAppModule description</Description>
+    <Image>Images\AddinDesktop32.png</Image>
+    <Author>Chris J. Michael</Author>
+    <Company>US Naval Research Laboratory</Company>
+    <Date>9/9/2020 12:03:35 PM</Date>
+    <Subject>Geometry</Subject>
+    <!-- Note subject can be one or more of these topics:
+                    Content, Framework, Editing, Geodatabase, Geometry, Geoprocessing, Layouts, Map Authoring, Map Exploration -->
+  </AddInInfo>
+  <modules>
+    <insertModule id="HamlProAppModule_Module" className="Module1" autoLoad="true" caption="Module1">
+      <!-- uncomment to have the control hosted on a separate tab-->
+      <tabs>
+        <tab id="HamlProAppModule_Tab1" caption="HAML" keytip="">
+          <group refID="HamlProAppModule_ExperimentGroup"/>
+          <group refID="HamlProAppModule_FeatureClassGroup"/>
+          <group refID="HamlProAppModule_ProfileGroup"/>
+          <group refID="HamlProAppModule_OptionsGroup"/>
+          <group refID="HamlProAppModule_MLGroup"/>
+          <group refID="HamlProAppModule_UtilitiesGroup"/>
+        </tab>
+      </tabs>
+      <groups>
+        <!-- host controls within groups -->
+        <group id="HamlProAppModule_ExperimentGroup" caption="Experiment" appearsOnAddInTab="false" keytip="a">
+          <button refID="HamlProAppModule_HamlExperimentTool" size="large" />
+          <button refID="HamlProAppModule_SmartInsert" size="large"/>
+          <button refID="HamlProAppModule_PerformExperiment" size="large"/>
+          <button refID="HamlProAppModule_SavePlot" size="large"/>
+          <button refID="HamlProAppModule_ExperimentOpenButton" size="large"/>
+          <button refID="HamlProAppModule_ResetGeometry" size="large"/>
+          <button refID="HamlProAppModule_OptionsOpenButton" size="large"/>
+        </group>
+      </groups>
+      <controls>
+        <!-- add your controls here -->
+        <tool id="HamlProAppModule_HamlExperimentTool" caption="Initialize Experiment Tool" className="haml.ui.arctool.HamlExperimentTool" loadOnClick="true" condition="creationToolsAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Initialize the experiment tool">
+            Initialize the experiment tool
+            <disabledText>Experiment tool already exists or is not ready</disabledText>
+          </tooltip>
+        </tool>
+        <tool id="HamlProAppModule_SmartInsert" caption="Smart Insert" className="haml.ui.button.SmartInsert" condition="refineAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Smart Insert">
+            Insert smartly
+            <disabledText>Can't smart insert :(</disabledText>
+          </tooltip>
+        </tool>
+        <tool id="HamlProAppModule_PerformExperiment" caption="Perform Experiment" className="haml.ui.button.PerformExperiment" condition="refineAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Perform Experiment">
+            Perform an experiment by automatically placing and correcting vertices along the baseline until a termination criteria is satisfied.
+            <disabledText>Experiment tool not yet initialized</disabledText>
+          </tooltip>
+        </tool>
+        <tool id="HamlProAppModule_SavePlot" caption="Save Plot" className="haml.ui.button.SavePlot" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Save Plot">
+            Save the currently displayed plot.
+          </tooltip>
+        </tool>
+        <button id="HamlProAppModule_ExperimentOpenButton" caption="View Data" className="haml.ui.button.ExperimentWindowOpen" loadOnClick="true" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png" keytip="a">
+          <tooltip heading="View Data">
+            Open up the experiment data window
+          </tooltip>
+        </button>
+        <tool id="HamlProAppModule_HamlMapTool" caption="Arbitrary Surface" className="haml.ui.arctool.HamlMapTool" condition="creationToolsAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Create Arbitrary Surface">
+            Create an arbitrary surface
+            <disabledText>No imagery layer selected</disabledText>
+          </tooltip>
+        </tool>
+        <tool id="HamlProAppModule_HamlSketchPolylineMapTool" caption="Sketch Curve" className="haml.ui.arctool.HamlSketchPolylineMapTool" loadOnClick="true" condition="creationToolsAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Sketch Curve">
+            Turn on the curve sketching tool
+            <disabledText>No imagery layer selected</disabledText>
+          </tooltip>
+        </tool>
+        <tool id="HamlProAppModule_HamlSketchPolygonMapTool" caption="Sketch Surface" className="haml.ui.arctool.HamlSketchPolygonMapTool" loadOnClick="true" condition="creationToolsAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Sketch Surface">
+            Turn on the surface sketching tool
+            <disabledText>No imagery layer selected</disabledText>
+          </tooltip>
+        </tool>
+        <tool id="HamlProAppModule_HamlEditPolylineMapTool" caption="Edit Curve" className="haml.ui.tool.HamlEditPolylineMapTool" loadOnClick="true" condition="polylineEditToolAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Edit Curve">
+            Load an existing curve into the tool
+            <disabledText>No imagery layer selected and/or no curve selected</disabledText>
+          </tooltip>
+        </tool>
+        <tool id="HamlProAppModule_HamlExtendPolylineMapTool" caption="Extend Curve" className="haml.ui.tool.HamlExtendPolylineMapTool" loadOnClick="true" condition="polylineEditToolAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Extend Curve">
+            Extend an existing curve
+            <disabledText>No imagery layer selected and/or no curve selected</disabledText>
+          </tooltip>
+        </tool>
+        <tool id="HamlProAppModule_HamlSketchProfileMapTool" caption="Create PolyLine Profiles" className="haml.ui.arctool.HamlSketchProfileMapTool" loadOnClick="true" condition="creationToolsAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+            <tooltip heading="Create Polyline Profiles">
+                Create Profiles based on sketched geometry
+                <disabledText>No imagery layer selected and/or no surface selected</disabledText>
+            </tooltip>
+        </tool>
+        <tool id="HamlProAppModule_HamlFeatureClassMapTool" caption="Create Profile Polyline from Feature Class" className="haml.ui.arctool.HamlFeatureClassMapTool" loadOnClick="true" condition="creationToolsAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+            <tooltip heading="Create Profile Polyline from FeatureClass">
+                Creates profile polyline from a feature class
+                <disabledText>No imagery layer selected and/or no surface selected</disabledText>
+            </tooltip>
+        </tool>
+         <tool id="HamlProAppModule_HamlEditPolygonMapTool" caption="Edit Surface" className="haml.ui.HamlEditPolygonMapTool" loadOnClick="true" condition="polygonEditToolAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonRed32.png" keytip="a">
+          <tooltip heading="Edit Surface">
+            Load an existing surface into the tool
+            <disabledText>No imagery layer selected and/or no surface selected</disabledText>
+          </tooltip>
+        </tool>
+        <button id="HamlProAppModule_AutoGenerate" caption="Refine" className="haml.ui.button.AutoGenerate" loadOnClick="true" condition="refineAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png" keytip="a">
+          <tooltip heading="Refine (K)">
+            Refine the current curve or surface
+            <disabledText>Nothing to refine</disabledText>
+          </tooltip>
+        </button>
+        <button id="HamlProAppModule_Undo" caption="Undo" className="haml.ui.button.Undo" loadOnClick="true" condition="undoRefineCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png" keytip="a">
+          <tooltip heading="Undo">
+            Undo last set of refinements
+            <disabledText>Nothing to undo</disabledText>
+          </tooltip>
+        </button>
+        <button id="HamlProAppModule_SaveGeometry" caption="Save" className="haml.ui.button.SaveGeometry" loadOnClick="true" condition="saveAvailableCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png" keytip="a">
+          <tooltip heading="Save">
+            Save your curve or surface to a feature class
+            <disabledText>Nothing to save</disabledText>
+          </tooltip>
+        </button>
+        <button id="HamlProAppModule_ResetGeometry" caption="Reset Tool" className="haml.ui.button.ResetGeometry" loadOnClick="true" condition="resetGeometryCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonOrange16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonOrange32.png" keytip="a">
+          <tooltip heading="Reset">
+            Reset the experiment tool.
+            <disabledText>No active tool is ready to be reset.</disabledText>
+          </tooltip>
+        </button>
+        <button id="HamlProAppModule_OptionsOpenButton" caption="Options" className="haml.ui.options.OptionsWindowOpen" loadOnClick="true" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png" keytip="a">
+          <tooltip heading="Options">
+            Open up the options window
+          </tooltip>
+        </button>    
+        <button id="HamlProAppModule_FeatureClassOptions" caption="Options" className="haml.ui.FeatureClassOptionsWindowOpen" loadOnClick="true" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonBlue32.png" keytip="a">
+          <tooltip heading="Options">
+            Open up the options window
+          </tooltip>
+        </button>    
+        <button id="HamlProAppModule_EnableLearner" caption="Enable Learner" className="haml.ui.button.EnableLearner" loadOnClick="true" condition="enableLearnerCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png" keytip="a">
+          <tooltip heading="Enable">
+            Enable a previously-disabled learner
+            <disabledText>The learner is already enabled</disabledText>
+          </tooltip>
+        </button>   
+        <button id="HamlProAppModule_DisableLearner" caption="Disable Learner" className="haml.ui.button.DisableLearner" loadOnClick="true" condition="disableLearnerCondition" smallImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen16.png" largeImage="pack://application:,,,/ArcGIS.Desktop.Resources;component/Images/GenericButtonGreen32.png" keytip="a">
+          <tooltip heading="Disable">
+            Disables the learner. Vertices will be placed by naive algorithm
+            <disabledText>The learner is already disabled</disabledText>
+          </tooltip>
+        </button>   
+      </controls>
+      <dockPanes>
+        <dockPane id="ProfileDockPane" caption="Profile" className="haml.ui.dockpane.ProfileDockPaneViewModel" dockWith="esri_core_MapPane" dock="bottom">
+            <content className="haml.ui.dockpane.ProfileDockPaneView" />
+        </dockPane>
+        <dockPane id="ExperimentDockPane" caption="Stats" className="haml.ui.Experiment.ExperimentDockPaneViewModel" 
+                  dockWith="esri_core_MapPane" dock="float">
+          <content className="haml.ui.Experiment.ExperimentDockPaneView" />
+        </dockPane>
+      </dockPanes>
+    </insertModule>
+  </modules>
+  <conditions>
+    <insertCondition id="featureClassSelectedCondition">
+          <state id="FeatureClassSelectedState"/>
+      </insertCondition>
+    <insertCondition id="creationToolsAvailableCondition">
+      <and>
+        <state id="ImageryLayerSelectedState"/>
+        <state id="PolylineSelectedState"/>
+        <not>
+          <state id="DoingOperationState"/>
+        </not>
+      </and>
+    </insertCondition>
+    <insertCondition id="polylineEditToolAvailableCondition">
+      <and>
+        <state id="ImageryLayerSelectedState"/>
+        <state id="PolylineContourSelectedState"/>
+        <state id="ExperimentReadyState"/>
+        <not>
+          <state id="DoingOperationState"/>
+        </not>
+      </and>
+    </insertCondition>
+        <insertCondition id="polygonEditToolAvailableCondition">
+      <and>
+        <state id="ImageryLayerSelectedState"/>
+        <state id="PolygonContourSelectedState"/>
+        <not>
+          <state id="DoingOperationState"/>
+        </not>
+      </and>
+    </insertCondition>
+    <insertCondition id="undoAvailableCondition">
+      <and>
+        <state id="UndoAvailableState"/>
+        <not>
+          <state id="DoingOperationState"/>
+        </not>
+      </and>
+    </insertCondition>
+    <insertCondition id="saveAvailableCondition">
+      <and>
+        <state id="ContourAvailableState"/>
+        <state id="InitializedState"/>
+        <not>
+          <state id="DoingOperationState"/>
+        </not>
+      </and>
+    </insertCondition>
+    <insertCondition id="undoRefineCondition">
+          <and>
+            <state id="UndoRefineState"/>
+            <not>
+              <state id="DoingOperationState"/>
+            </not>
+          </and>
+        </insertCondition>
+    <insertCondition id="refineAvailableCondition">
+      <and> 
+        <state id="ContourAvailableState"/>
+        <state id = "InitializedState"/>
+        <not>
+          <state id="DoingOperationState"/>
+        </not>
+      </and>
+    </insertCondition>
+    <insertCondition id="enableLearnerCondition">
+      <and>
+        <state id="EnableLearnerState"/>
+        <state id="InitializedState"/>
+        <not>
+          <state id="DoingOperationState"/>
+          <state id="DisableLearnerState"/>
+        </not>
+      </and>
+    </insertCondition>
+    <insertCondition id="disableLearnerCondition">
+      <and>
+        <state id="DisableLearnerState"/>
+        <state id="InitializedState"/>
+        <not>
+          <state id="DoingOperationState"/>
+          <state id="EnableLearnerState"/>
+        </not>
+      </and>
+    </insertCondition>
+    <insertCondition id="resetGeometryCondition">
+      <and>
+        <state id="ResetGeometryState"/>
+        <not>
+          <state id="DoingOperationState"/>
+        </not>
+      </and>
+    </insertCondition>
+  </conditions>
+</ArcGIS>
